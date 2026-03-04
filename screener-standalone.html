@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crypto Screener | Phase 1</title>
+  <style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0d1117;
+  color: #c9d1d9;
+  line-height: 1.5;
+}
+.container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #30363d;
+  margin-bottom: 15px;
+}
+h1 { font-size: 1.5rem; color: #58a6ff; }
+
+.controls, .filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+select, button, input {
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+button {
+  background: #238636;
+  border-color: #238636;
+  cursor: pointer;
+}
+button:hover { background: #2ea043; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.filters {
+  padding: 10px;
+  background: #161b22;
+  border-radius: 8px;
+  margin-bottom: 15px;
+}
+.filters label { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; }
+.filters input[type="checkbox"] { width: auto; }
+
+.status {
+  padding: 12px;
+  background: #161b22;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  text-align: center;
+  color: #8b949e;
+}
+.status.loading { color: #58a6ff; }
+.status.error { color: #f85149; background: #3d0c0c; }
+.status.success { color: #3fb950; }
+
+.results { display: grid; gap: 12px; }
+
+.card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  padding: 16px;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.1s;
+}
+.card:hover { border-color: #58a6ff; transform: translateY(-2px); }
+.card.LONG { border-left: 4px solid #3fb950; }
+.card.SHORT { border-left: 4px solid #f85149; }
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.symbol { font-size: 1.3rem; font-weight: 600; color: #f0f6fc; }
+.side-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.side-badge.LONG { background: rgba(63, 185, 80, 0.2); color: #3fb950; }
+.side-badge.SHORT { background: rgba(248, 81, 73, 0.2); color: #f85149; }
+
+.card-scores {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.score-box { text-align: center; }
+.score-box .label { font-size: 0.7rem; color: #8b949e; text-transform: uppercase; }
+.score-box .value { font-size: 1.4rem; font-weight: 700; }
+.score-box .value.high { color: #3fb950; }
+.score-box .value.med { color: #d29922; }
+.score-box .value.low { color: #8b949e; }
+
+.card-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  font-size: 0.8rem;
+  color: #8b949e;
+}
+.metric { display: flex; justify-content: space-between; }
+.metric span:last-child { color: #c9d1d9; font-weight: 500; }
+
+.card-why {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #30363d;
+  font-size: 0.8rem;
+  color: #8b949e;
+}
+
+.entry-plan {
+  margin-top: 12px;
+  padding: 12px;
+  background: #0d1117;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+.entry-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.entry-row .label { color: #8b949e; }
+.entry-row .value { font-family: monospace; }
+
+.modal {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal.hidden { display: none; }
+.modal-content {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 800px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 20px;
+}
+.close {
+  float: right;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #8b949e;
+}
+.close:hover { color: #f0f6fc; }
+.chart { height: 300px; background: #0d1117; border-radius: 8px; margin: 15px 0; }
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #8b949e;
+}
+.empty-state h3 { color: #c9d1d9; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🎯 Phase 1 Screener</h1>
+      <div class="controls">
+        <select id="timeframe">
+          <option value="5m" selected>5m</option>
+          <option value="15m">15m</option>
+          <option value="1h">1h</option>
+          <option value="4h">4h</option>
+        </select>
+        <select id="view">
+          <option value="discovery" selected>Discovery View</option>
+          <option value="entries">Entry Setups</option>
+          <option value="all">All Signals</option>
+        </select>
+        <button id="refreshBtn">↻ Refresh</button>
+      </div>
+    </header>
+
+    <div class="filters">
+      <label><input type="checkbox" id="filterLong" checked> LONG</label>
+      <label><input type="checkbox" id="filterShort" checked> SHORT</label>
+      <label>Min Confidence: <input type="range" id="minConf" min="0" max="100" value="45"> <span id="confVal">45</span></label>
+      <label>Top: <input type="number" id="topN" value="20" min="5" max="50" style="width:60px;"></label>
+    </div>
+
+    <div id="status" class="status">Loaded with demo data. Filters work instantly.</div>
+
+    <div id="results" class="results"></div>
+
+    <div id="detailModal" class="modal hidden">
+      <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2 id="detailTitle"></h2>
+        <div id="detailChart" class="chart"></div>
+        <div id="detailData"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+// Mock data - embedded for standalone use
+const MOCK_DATA = {
+  ok: true,
+  data: [
+    { symbol: 'BTC/USDT:USDT', side: 'LONG', confidence: 83.6, discoveryScore: 60.6, price: 65000, priceChg5m: 0.40, rsi14: 60.6, volSpike: 3.1, obImb: 0.59, oiDeltaPct: -2.16, funding: -0.0004, takerRatio: 1.12, buySellVolRatio: 0.95, buySellVolNetPct: 7.46, whaleScore: 46.6, whaleFlowPct: 3.17, whaleBurstZ: 0.22, whaleNetUsd: 467154, whaleTradeCount: 36, altfinsBias: 'NEUTRAL', atr14: 1300, entryLow: 64675, entryHigh: 65195, stop: 63440, tp1: 66560, tp2: 67860, rr: 2.71, invalidation: '5m close below EMA50', riskUsd: 50, sizeUnits: 0.033, positionNotional: 2173.91, supportDistPct: 1.15, resistanceDistPct: 2.94, srProximity: 86.1, srZone: 'support', srNearestType: 'support', srNearestDistPct: 0.72, srSource: 'local', supportLevel: 61750, resistanceLevel: 68250, srBreakoutScore: 47.0, srApproachingScore: 52.5, srObOsScore: 51.3, srSignalSource: 'mock', discoveryWhy: 'Flow intensity 1.25 | OIΔ 2.3%', why: 'EMA20>EMA50 | RSI 58.2 | OI↑ + Price↑' },
+    { symbol: 'LINK/USDT:USDT', side: 'LONG', confidence: 71.5, discoveryScore: 77.4, price: 18.5, priceChg5m: -0.39, rsi14: 51.0, volSpike: 1.66, obImb: 0.41, oiDeltaPct: -1.37, funding: 0.00026, takerRatio: 1.03, buySellVolRatio: 0.95, buySellVolNetPct: 0.21, whaleScore: 60.3, whaleFlowPct: -4.25, whaleBurstZ: 0.81, whaleNetUsd: -50898, whaleTradeCount: 41, altfinsBias: 'NEUTRAL', atr14: 0.37, entryLow: 18.41, entryHigh: 18.56, stop: 18.06, tp1: 18.94, tp2: 19.31, rr: 2.41, invalidation: '5m close below EMA50', riskUsd: 50, sizeUnits: 117.5, positionNotional: 2173.91, supportDistPct: 0.80, resistanceDistPct: 2.90, srProximity: 67.3, srZone: 'support', srNearestType: 'support', srNearestDistPct: 1.31, srSource: 'local', supportLevel: 17.58, resistanceLevel: 19.43, srBreakoutScore: 51.9, srApproachingScore: 48.4, srObOsScore: 47.2, srSignalSource: 'mock', discoveryWhy: 'Flow intensity 1.25 | OIΔ 2.3%', why: 'EMA20>EMA50 | RSI 58.2 | OI↑ + Price↑' },
+    { symbol: 'XRP/USDT:USDT', side: 'SHORT', confidence: 67.7, discoveryScore: 64.2, price: 0.62, priceChg5m: -0.41, rsi14: 66.7, volSpike: 2.49, obImb: 0.50, oiDeltaPct: 2.09, funding: -0.00004, takerRatio: 1.04, buySellVolRatio: 1.11, buySellVolNetPct: 3.06, whaleScore: 53.6, whaleFlowPct: -5.96, whaleBurstZ: 0.38, whaleNetUsd: 369550, whaleTradeCount: 16, altfinsBias: 'NEUTRAL', atr14: 0.0124, entryLow: 0.618, entryHigh: 0.623, stop: 0.635, tp1: 0.605, tp2: 0.593, rr: 2.13, invalidation: '5m close above EMA50', riskUsd: 50, sizeUnits: 3506.3, positionNotional: 2173.91, supportDistPct: 1.61, resistanceDistPct: 2.18, srProximity: 76.6, srZone: 'resistance', srNearestType: 'resistance', srNearestDistPct: 1.76, srSource: 'local', supportLevel: 0.589, resistanceLevel: 0.651, srBreakoutScore: 45.4, srApproachingScore: 50.8, srObOsScore: 48.0, srSignalSource: 'mock', discoveryWhy: 'Flow intensity 1.25 | OIΔ 2.3%', why: 'EMA20<EMA50 | RSI 42.1 | Funding overheated' },
+    { symbol: 'DOGE/USDT:USDT', side: 'LONG', confidence: 65.2, discoveryScore: 64.9, price: 0.17, priceChg5m: 0.52, rsi14: 68.4, volSpike: 1.25, obImb: 0.42, oiDeltaPct: -1.51, funding: -0.00005, takerRatio: 1.07, buySellVolRatio: 0.99, buySellVolNetPct: 6.01, whaleScore: 40.6, whaleFlowPct: -8.03, whaleBurstZ: 0.71, whaleNetUsd: 324451, whaleTradeCount: 16, altfinsBias: 'NEUTRAL', atr14: 0.0034, entryLow: 0.169, entryHigh: 0.171, stop: 0.166, tp1: 0.174, tp2: 0.177, rr: 2.75, invalidation: '5m close below EMA50', riskUsd: 50, sizeUnits: 12787.7, positionNotional: 2173.91, supportDistPct: 1.83, resistanceDistPct: 2.02, srProximity: 72.5, srZone: 'support', srNearestType: 'support', srNearestDistPct: 1.28, srSource: 'local', supportLevel: 0.162, resistanceLevel: 0.179, srBreakoutScore: 53.7, srApproachingScore: 52.3, srObOsScore: 51.3, srSignalSource: 'mock', discoveryWhy: 'Volume burst 2.1x | Whale accumulation 72', why: 'EMA20>EMA50 | RSI 58.2 | OI↑ + Price↑' },
+    { symbol: 'ETH/USDT:USDT', side: 'SHORT', confidence: 61.3, discoveryScore: 58.7, price: 3500, priceChg5m: 0.45, rsi14: 47.3, volSpike: 3.72, obImb: 0.43, oiDeltaPct: -0.02, funding: 0.00044, takerRatio: 1.10, buySellVolRatio: 1.03, buySellVolNetPct: -5.81, whaleScore: 46.0, whaleFlowPct: -6.47, whaleBurstZ: 0.86, whaleNetUsd: -187494, whaleTradeCount: 49, altfinsBias: 'NEUTRAL', atr14: 70, entryLow: 3490, entryHigh: 3518, stop: 3584, tp1: 3416, tp2: 3346, rr: 2.56, invalidation: '5m close above EMA50', riskUsd: 50, sizeUnits: 0.62, positionNotional: 2173.91, supportDistPct: 2.80, resistanceDistPct: 2.19, srProximity: 88.9, srZone: 'resistance', srNearestType: 'resistance', srNearestDistPct: 0.37, srSource: 'local', supportLevel: 3325, resistanceLevel: 3675, srBreakoutScore: 48.8, srApproachingScore: 45.3, srObOsScore: 53.8, srSignalSource: 'mock', discoveryWhy: 'Volume burst 2.1x | Whale accumulation 72', why: 'EMA20<EMA50 | RSI 42.1 | Funding overheated' },
+    { symbol: 'AVAX/USDT:USDT', side: 'SHORT', confidence: 61.0, discoveryScore: 65.1, price: 35, priceChg5m: 0.76, rsi14: 64.4, volSpike: 1.19, obImb: 0.43, oiDeltaPct: -0.96, funding: -0.00035, takerRatio: 0.88, buySellVolRatio: 0.94, buySellVolNetPct: -7.43, whaleScore: 43.9, whaleFlowPct: 7.69, whaleBurstZ: -0.21, whaleNetUsd: -176193, whaleTradeCount: 47, altfinsBias: 'NEUTRAL', atr14: 0.7, entryLow: 34.90, entryHigh: 35.18, stop: 35.84, tp1: 34.16, tp2: 33.46, rr: 2.74, invalidation: '5m close above EMA50', riskUsd: 50, sizeUnits: 62.11, positionNotional: 2173.91, supportDistPct: 0.28, resistanceDistPct: 0.85, srProximity: 70.6, srZone: 'resistance', srNearestType: 'resistance', srNearestDistPct: 0.76, srSource: 'local', supportLevel: 33.25, resistanceLevel: 36.75, srBreakoutScore: 46.2, srApproachingScore: 47.6, srObOsScore: 53.7, srSignalSource: 'mock', discoveryWhy: 'Volume burst 2.1x | Whale accumulation 72', why: 'EMA20<EMA50 | RSI 42.1 | Funding overheated' },
+    { symbol: 'ADA/USDT:USDT', side: 'SHORT', confidence: 59.2, discoveryScore: 64.4, price: 0.45, priceChg5m: -0.21, rsi14: 45.3, volSpike: 1.20, obImb: 0.57, oiDeltaPct: -1.59, funding: -0.00002, takerRatio: 1.17, buySellVolRatio: 1.05, buySellVolNetPct: -3.04, whaleScore: 46.4, whaleFlowPct: -6.53, whaleBurstZ: -0.76, whaleNetUsd: 437376, whaleTradeCount: 36, altfinsBias: 'NEUTRAL', atr14: 0.009, entryLow: 0.449, entryHigh: 0.452, stop: 0.461, tp1: 0.439, tp2: 0.430, rr: 2.39, invalidation: '5m close above EMA50', riskUsd: 50, sizeUnits: 4830.9, positionNotional: 2173.91, supportDistPct: 1.28, resistanceDistPct: 0.37, srProximity: 78.1, srZone: 'resistance', srNearestType: 'resistance', srNearestDistPct: 1.42, srSource: 'local', supportLevel: 0.428, resistanceLevel: 0.473, srBreakoutScore: 49.6, srApproachingScore: 50.7, srObOsScore: 53.3, srSignalSource: 'mock', discoveryWhy: 'Taker buy pressure | Positioning shift', why: 'EMA20<EMA50 | RSI 42.1 | Funding overheated' },
+    { symbol: 'SOL/USDT:USDT', side: 'LONG', confidence: 55.3, discoveryScore: 59.5, price: 145, priceChg5m: -0.88, rsi14: 45.5, volSpike: 1.10, obImb: 0.46, oiDeltaPct: 0.87, funding: 0.00006, takerRatio: 1.06, buySellVolRatio: 1.17, buySellVolNetPct: -1.86, whaleScore: 53.8, whaleFlowPct: -5.77, whaleBurstZ: -0.96, whaleNetUsd: -73405, whaleTradeCount: 42, altfinsBias: 'NEUTRAL', atr14: 2.9, entryLow: 144.28, entryHigh: 145.44, stop: 141.52, tp1: 148.48, tp2: 151.38, rr: 2.48, invalidation: '5m close below EMA50', riskUsd: 50, sizeUnits: 14.99, positionNotional: 2173.91, supportDistPct: 0.47, resistanceDistPct: 1.13, srProximity: 80.4, srZone: 'support', srNearestType: 'support', srNearestDistPct: 1.36, srSource: 'local', supportLevel: 137.75, resistanceLevel: 152.25, srBreakoutScore: 45.6, srApproachingScore: 53.9, srObOsScore: 53.4, srSignalSource: 'mock', discoveryWhy: 'Taker buy pressure | Positioning shift', why: 'EMA20>EMA50 | RSI 58.2 | OI↑ + Price↑' }
+  ],
+  timeframe: '5m',
+  providers: ['binance'],
+  mode: 'union'
+};
+
+const UI = {
+  statusEl: document.getElementById('status'),
+  resultsEl: document.getElementById('results'),
+  refreshBtn: document.getElementById('refreshBtn'),
+  timeframe: document.getElementById('timeframe'),
+  view: document.getElementById('view'),
+  filterLong: document.getElementById('filterLong'),
+  filterShort: document.getElementById('filterShort'),
+  minConf: document.getElementById('minConf'),
+  confVal: document.getElementById('confVal'),
+  topN: document.getElementById('topN'),
+  modal: document.getElementById('detailModal'),
+  modalClose: document.querySelector('.close'),
+  
+  setStatus(msg, type = 'info') {
+    this.statusEl.textContent = msg;
+    this.statusEl.className = 'status ' + (type === 'loading' ? 'loading' : type === 'error' ? 'error' : type === 'success' ? 'success' : '');
+  },
+  
+  formatNum(n, digits = 2) {
+    if (n === undefined || n === null) return '-';
+    return Number(n).toFixed(digits);
+  },
+  
+  getScoreClass(val) {
+    if (val >= 70) return 'high';
+    if (val >= 50) return 'med';
+    return 'low';
+  },
+  
+  renderCard(item) {
+    const view = this.view.value;
+    const showDiscovery = view === 'discovery' || view === 'all';
+    const showEntry = view === 'entries' || (view === 'all' && item.entryLow);
+    
+    let html = `
+      <div class="card ${item.side}" data-symbol="${item.symbol}">
+        <div class="card-header">
+          <span class="symbol">${item.symbol}</span>
+          <span class="side-badge ${item.side}">${item.side}</span>
+        </div>
+        <div class="card-scores">
+          <div class="score-box">
+            <div class="label">Confidence</div>
+            <div class="value ${this.getScoreClass(item.confidence)}">${this.formatNum(item.confidence, 1)}</div>
+          </div>
+          ${showDiscovery ? `
+          <div class="score-box">
+            <div class="label">Discovery</div>
+            <div class="value ${this.getScoreClass(item.discoveryScore)}">${this.formatNum(item.discoveryScore, 1)}</div>
+          </div>
+          ` : ''}
+          ${item.rr ? `
+          <div class="score-box">
+            <div class="label">R:R</div>
+            <div class="value ${item.rr >= 2 ? 'high' : item.rr >= 1.5 ? 'med' : 'low'}">${this.formatNum(item.rr, 1)}</div>
+          </div>
+          ` : ''}
+        </div>
+        <div class="card-metrics">
+          <div class="metric"><span>Price</span><span>$${this.formatNum(item.price, item.price < 1 ? 6 : 2)}</span></div>
+          <div class="metric"><span>RSI</span><span>${this.formatNum(item.rsi14, 1)}</span></div>
+          <div class="metric"><span>Vol</span><span>${this.formatNum(item.volSpike, 1)}x</span></div>
+          <div class="metric"><span>OIΔ</span><span>${this.formatNum(item.oiDeltaPct, 2)}%</span></div>
+          <div class="metric"><span>Funding</span><span>${this.formatNum(item.funding * 100, 4)}%</span></div>
+          <div class="metric"><span>Taker</span><span>${this.formatNum(item.takerRatio, 2)}</span></div>
+          <div class="metric"><span>Whale</span><span>${this.formatNum(item.whaleScore, 0)}</span></div>
+          <div class="metric"><span>S/R Prox</span><span>${this.formatNum(item.srProximity, 0)}</span></div>
+        </div>
+    `;
+    
+    if (showEntry && item.entryLow) {
+      html += `
+        <div class="entry-plan">
+          <div class="entry-row"><span class="label">Entry Zone</span><span class="value">${this.formatNum(item.entryLow, 6)} - ${this.formatNum(item.entryHigh, 6)}</span></div>
+          <div class="entry-row"><span class="label">Stop Loss</span><span class="value" style="color:#f85149">${this.formatNum(item.stop, 6)}</span></div>
+          <div class="entry-row"><span class="label">TP1 / TP2</span><span class="value" style="color:#3fb950">${this.formatNum(item.tp1, 6)} / ${this.formatNum(item.tp2, 6)}</span></div>
+          <div class="entry-row"><span class="label">Size (Risk $${item.riskUsd})</span><span class="value">${this.formatNum(item.sizeUnits, 4)} units</span></div>
+          <div class="entry-row" style="margin-top:8px;font-size:0.75rem;color:#8b949e"><span>Invalidation:</span> ${item.invalidation}</div>
+        </div>
+      `;
+    }
+    
+    if (item.why || item.discoveryWhy) {
+      html += `<div class="card-why">${item.discoveryWhy ? `<strong>Discovery:</strong> ${item.discoveryWhy}<br>` : ''}${item.why ? `<strong>Setup:</strong> ${item.why}` : ''}</div>`;
+    }
+    
+    html += '</div>';
+    return html;
+  },
+  
+  renderEmpty(msg = 'No signals found') {
+    return `<div class="empty-state"><h3>${msg}</h3><p>Try adjusting filters</p></div>`;
+  },
+  
+  filterData(data) {
+    let filtered = data.data || [];
+    
+    const allowLong = this.filterLong.checked;
+    const allowShort = this.filterShort.checked;
+    filtered = filtered.filter(i => (i.side === 'LONG' && allowLong) || (i.side === 'SHORT' && allowShort));
+    
+    const minConf = parseInt(this.minConf.value);
+    filtered = filtered.filter(i => i.confidence >= minConf);
+    
+    const topN = parseInt(this.topN.value);
+    filtered = filtered.slice(0, topN);
+    
+    return filtered;
+  },
+  
+  render() {
+    const filtered = this.filterData(MOCK_DATA);
+    if (!filtered.length) {
+      this.resultsEl.innerHTML = this.renderEmpty();
+      return;
+    }
+    this.resultsEl.innerHTML = filtered.map(item => this.renderCard(item)).join('');
+    
+    this.resultsEl.querySelectorAll('.card').forEach(card => {
+      card.addEventListener('click', () => this.showDetail(card.dataset.symbol));
+    });
+    
+    const count = filtered.length;
+    this.setStatus(`Showing ${count} signals | Filters: ${this.view.value} view`, 'success');
+  },
+  
+  showDetail(symbol) {
+    document.getElementById('detailTitle').textContent = symbol;
+    this.modal.classList.remove('hidden');
+    document.getElementById('detailData').innerHTML = '<p>Real-time chart requires live API connection.</p>';
+  },
+  
+  hideDetail() {
+    this.modal.classList.add('hidden');
+  }
+};
+
+// Event handlers
+UI.refreshBtn.addEventListener('click', () => {
+  UI.render();
+});
+
+UI.minConf.addEventListener('input', (e) => {
+  UI.confVal.textContent = e.target.value;
+  UI.render();
+});
+
+[UI.filterLong, UI.filterShort, UI.topN, UI.view].forEach(el => {
+  el.addEventListener('change', () => UI.render());
+});
+
+UI.modalClose.addEventListener('click', () => UI.hideDetail());
+UI.modal.addEventListener('click', (e) => {
+  if (e.target === UI.modal) UI.hideDetail();
+});
+
+// Initial render
+UI.render();
+  </script>
+</body>
+</html>
