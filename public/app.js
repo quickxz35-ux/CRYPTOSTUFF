@@ -255,9 +255,33 @@ const UI = {
         if (item) {
           const card = this.resultsEl.querySelector(`.card[data-symbol="${symbol}"]`);
           if (card) {
+            const parent = card.parentElement;
             card.outerHTML = this.renderCard(item);
-            // Re-attach handlers
-            this.attachCardHandlers(card.parentElement);
+            // Re-attach handlers to the newly created card
+            const newCard = parent.querySelector(`.card[data-symbol="${symbol}"]`);
+            if (newCard) {
+              // View toggle handlers
+              newCard.querySelectorAll('.view-btn').forEach(btn => {
+                btn.addEventListener('click', (ev) => {
+                  ev.stopPropagation();
+                  cardViewState.set(btn.dataset.symbol, btn.dataset.view);
+                  UI.refreshBtn.click();
+                });
+              });
+              // Timeframe change handlers
+              newCard.querySelectorAll('.card-tf-select').forEach(select => {
+                select.addEventListener('change', (ev) => {
+                  ev.stopPropagation();
+                  cardTimeframeState.set(select.dataset.symbol, select.value);
+                  UI.setStatus(`${select.dataset.symbol}: Switched to ${select.value} timeframe`, 'info');
+                });
+              });
+              // Detail click handler
+              newCard.addEventListener('click', (ev) => {
+                if (ev.target.closest('.view-toggle') || ev.target.closest('.card-controls')) return;
+                UI.showDetail(newCard.dataset.symbol);
+              });
+            }
           }
         }
       });
