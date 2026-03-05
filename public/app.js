@@ -260,27 +260,7 @@ const UI = {
             // Re-attach handlers to the newly created card
             const newCard = parent.querySelector(`.card[data-symbol="${symbol}"]`);
             if (newCard) {
-              // View toggle handlers
-              newCard.querySelectorAll('.view-btn').forEach(btn => {
-                btn.addEventListener('click', (ev) => {
-                  ev.stopPropagation();
-                  cardViewState.set(btn.dataset.symbol, btn.dataset.view);
-                  UI.refreshBtn.click();
-                });
-              });
-              // Timeframe change handlers
-              newCard.querySelectorAll('.card-tf-select').forEach(select => {
-                select.addEventListener('change', (ev) => {
-                  ev.stopPropagation();
-                  cardTimeframeState.set(select.dataset.symbol, select.value);
-                  UI.setStatus(`${select.dataset.symbol}: Switched to ${select.value} timeframe`, 'info');
-                });
-              });
-              // Detail click handler
-              newCard.addEventListener('click', (ev) => {
-                if (ev.target.closest('.view-toggle') || ev.target.closest('.card-controls')) return;
-                UI.showDetail(newCard.dataset.symbol);
-              });
+              // All handlers attached via attachSingleCardHandlers
             }
           }
         }
@@ -309,6 +289,37 @@ const UI = {
     });
   },
   
+  attachSingleCardHandlers(cardEl, parent) {
+    const sym = cardEl.dataset.symbol;
+    // View toggle handlers
+    cardEl.querySelectorAll('.view-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const vw = btn.dataset.view;
+        cardViewState.set(sym, vw);
+        const itm = this.filterData({data: currentData}).find(i => i.symbol === sym);
+        if (itm) {
+          cardEl.outerHTML = this.renderCard(itm);
+          const reCard = parent.querySelector(`.card[data-symbol="${sym}"]`);
+          if (reCard) this.attachSingleCardHandlers(reCard, parent);
+        }
+      });
+    });
+    // Timeframe handler
+    cardEl.querySelectorAll('.card-tf-select').forEach(select => {
+      select.addEventListener('change', (e) => {
+        e.stopPropagation();
+        cardTimeframeState.set(sym, select.value);
+        this.setStatus(`${sym}: Switched to ${select.value} timeframe (refresh to apply)`, 'info');
+      });
+    });
+    // Detail click
+    cardEl.addEventListener('click', (e) => {
+      if (e.target.closest('.view-toggle') || e.target.closest('.card-controls')) return;
+      this.showDetail(sym);
+    });
+  },
+
   attachCardHandlers(container) {
     container.querySelectorAll('.view-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -316,7 +327,15 @@ const UI = {
         const symbol = btn.dataset.symbol;
         const view = btn.dataset.view;
         cardViewState.set(symbol, view);
-        this.refreshBtn.click();
+        const itm = this.filterData({data: currentData}).find(i => i.symbol === symbol);
+        if (itm) {
+          const card = container.querySelector(`.card[data-symbol="${symbol}"]`);
+          if (card) {
+            card.outerHTML = this.renderCard(itm);
+            const newCard = container.querySelector(`.card[data-symbol="${symbol}"]`);
+            if (newCard) this.attachSingleCardHandlers(newCard, container);
+          }
+        }
       });
     });
     container.querySelectorAll('.card-tf-select').forEach(select => {
@@ -325,7 +344,7 @@ const UI = {
         const symbol = select.dataset.symbol;
         const tf = select.value;
         cardTimeframeState.set(symbol, tf);
-        this.setStatus(`${symbol}: Switched to ${tf} timeframe`, 'info');
+        this.setStatus(`${symbol}: Switched to ${tf} timeframe (refresh to apply)`, 'info');
       });
     });
   },
