@@ -191,11 +191,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
           <option value="binance" selected>Binance</option>
           <option value="codex">Codex</option>
         </select>
-        <select id="view" onchange="render()">
-          <option value="discovery" selected>Discovery</option>
-          <option value="entries">Entries</option>
-          <option value="all">All</option>
-        </select>
+        <span style="color:#8b949e;font-size:0.85rem">Click cards to toggle Discovery/Entry</span>
         <button id="refreshBtn" onclick="refreshData()">↻ Refresh</button>
       </div>
     </header>
@@ -337,27 +333,30 @@ function transformAPIData(item) {
   };
 }
 
-function renderCard(item) {
-  const view = document.getElementById('view').value;
-  const showDiscovery = view === 'discovery' || view === 'all';
-  const showEntry = view === 'entries' || (view === 'all' && item.entryLow);
+function renderCard(item, cardView = 'discovery') {
+  const showEntry = item.entryLow && cardView === 'entry';
   
   let html = `
-    <div class="card ${item.side}">
+    <div class="card ${item.side}" data-symbol="${item.symbol}" data-view="${cardView}">
       <div class="card-header">
         <span class="symbol">${item.symbol}</span>
-        <span class="side-badge ${item.side}">${item.side}</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="side-badge ${item.side}">${item.side}</span>
+        </div>
+      </div>
+      <div class="view-toggle" style="display:flex;gap:4px;margin-bottom:10px">
+        <button onclick="toggleCardView('${item.symbol}', 'discovery')" class="view-btn ${cardView === 'discovery' ? 'active' : ''}" style="padding:4px 12px;font-size:0.75rem;background:${cardView === 'discovery' ? '#1f6feb' : '#21262d'};border:1px solid #30363d;border-radius:4px;cursor:pointer">Discovery</button>
+        <button onclick="toggleCardView('${item.symbol}', 'entry')" class="view-btn ${cardView === 'entry' ? 'active' : ''}" style="padding:4px 12px;font-size:0.75rem;background:${cardView === 'entry' ? '#1f6feb' : '#21262d'};border:1px solid #30363d;border-radius:4px;cursor:pointer">Entry</button>
       </div>
       <div class="card-scores">
         <div class="score-box">
           <div class="label">Confidence</div>
           <div class="value ${item.confidence >= 70 ? 'high' : item.confidence >= 50 ? 'med' : 'low'}">${item.confidence.toFixed(1)}</div>
         </div>
-        ${showDiscovery ? `
         <div class="score-box">
           <div class="label">Discovery</div>
           <div class="value ${item.discoveryScore >= 70 ? 'high' : item.discoveryScore >= 50 ? 'med' : 'low'}">${item.discoveryScore.toFixed(1)}</div>
-        </div>` : ''}
+        </div>
         ${item.rr ? `
         <div class="score-box">
           <div class="label">R:R</div>
@@ -369,8 +368,8 @@ function renderCard(item) {
         </div>
       </div>
       
-      ${view === 'entries' ? `
-      <div class="bar-metrics">
+      ${cardView === 'entry' ? `
+      <div class="bar-metrics entry-bars">
         ${getRSIBarHTML(item.rsi14)}
         ${getVolMomBarHTML(item.volSpike, item.priceChg5m)}
         ${getOICorrelationBarHTML(item.oiDeltaPct, item.priceChg5m)}
@@ -378,7 +377,7 @@ function renderCard(item) {
         ${getRRBarHTML(item.rr)}
       </div>
       ` : `
-      <div class="bar-metrics">
+      <div class="bar-metrics discovery-bars">
         ${getBarHTML('Volume Δ', item.volDelta, item.volSpike.toFixed(1) + 'x', item.volDelta > 50 ? 'positive' : 'neutral')}
         ${getBarHTML('OI Delta', item.oiDelta, (item.oiDeltaPct > 0 ? '+' : '') + item.oiDeltaPct.toFixed(2) + '%', item.oiDeltaPct > 0 ? 'positive' : 'negative')}
         ${getBarHTML('Funding', item.fundingBar, (item.funding * 100).toFixed(4) + '%', item.funding > 0 ? 'warning' : 'neutral')}
@@ -408,6 +407,14 @@ function renderCard(item) {
   return html + '</div>';
 }
 
+// Track view state per card
+const cardViews = {};
+
+function toggleCardView(symbol, view) {
+  cardViews[symbol] = view;
+  render();
+}
+
 function render() {
   const minConf = parseInt(document.getElementById('minConf').value);
   const topN = parseInt(document.getElementById('topN').value);
@@ -428,7 +435,7 @@ function render() {
     return;
   }
   
-  resultsEl.innerHTML = filtered.map(item => renderCard(item)).join('');
+  resultsEl.innerHTML = filtered.map(item => renderCard(item, cardViews[item.symbol] || 'discovery')).join('');
   
   const tf = document.getElementById('timeframe').value;
   const apis = Array.from(document.getElementById('apis').selectedOptions).map(o => o.value).join(',');
