@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head><title>Test</title></head>
+<body>
+<select id="view" onchange="checkView()">
+  <option value="discovery">Discovery</option>
+  <option value="entries">Entries</option>
+  <option value="all">All</option>
+</select>
+<div id="output"></div>
+<script>
+function checkView() {
+  const view = document.getElementById('view').value;
+  document.getElementById('output').innerHTML = 
+    'Selected: ' + view + '<br>Is entries? ' + (view === 'entries');
+}
+checkView();
+</script>
+</body>
+</html>

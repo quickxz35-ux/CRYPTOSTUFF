@@ -1,9 +1,12 @@
 #!/usr/bin/env node
+require('dotenv').config();
 const fs = require('fs');
 const ccxt = require('ccxt');
 const { getWhaleProxy } = require('./whale_phase15');
 const { getCodexTopSymbols } = require('./codex_adapter');
 const { getHistoricalAnalytics, getSupportResistance, getSrSignalPack } = require('./altfins_adapter');
+// COINANK: Free trial - remove this line and references below when trial expires
+const { getCoinAnkTopSymbols } = require('./coinank_adapter');
 
 const BINANCE_FAPI = 'https://fapi.binance.com';
 const cfg = JSON.parse(fs.readFileSync('./config.phase1.json', 'utf8'));
@@ -12,7 +15,8 @@ const TF = process.env.TIMEFRAME || cfg.timeframe || '5m';
 const TOP_N = Number(process.env.TOP_N || cfg.topN || 40);
 const WATCHLIST_FILE = process.env.WATCHLIST_FILE || 'watchlist.txt';
 const RISK_USD = Number(process.env.RISK_USD || 50);
-const exchange = new ccxt.binanceusdm({ enableRateLimit: true });
+const PROXY = process.env.HTTP_PROXY || process.env.http_proxy || process.env.HTTPS_PROXY || process.env.https_proxy || '';
+const exchange = new ccxt.binanceusdm({ enableRateLimit: true, ...(PROXY && { proxy: PROXY }) });
 
 function normalizeSymbol(s) {
   s = String(s || '').trim().toUpperCase();
@@ -255,6 +259,10 @@ function score(features) {
   } else if (DATA_PROVIDER === 'codex') {
     const codex = await getCodexTopSymbols(TOP_N, process.env.CODEX_API_KEY || '');
     universe = codex.length ? codex : await getTopSymbols();
+  } else if (DATA_PROVIDER === 'coinank') {
+    // COINANK: Free trial - remove this block when trial expires
+    const coinank = await getCoinAnkTopSymbols(TOP_N, process.env.COINANK_API_KEY || '');
+    universe = coinank.length ? coinank : await getTopSymbols();
   } else {
     universe = await getTopSymbols();
   }

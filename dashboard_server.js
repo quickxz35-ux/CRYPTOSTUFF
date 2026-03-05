@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+require('dotenv').config();
 const path = require('path');
 const express = require('express');
 const { execFile } = require('child_process');
@@ -6,6 +7,15 @@ const { execFile } = require('child_process');
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
+const MOCK_MODE = process.env.MOCK === '1' || process.env.MOCK === 'true';
+
+// Enable CORS for local file access
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  next();
+});
 
 async function fetchJSON(url, headers = {}) {
   const r = await fetch(url, { headers });
@@ -15,7 +25,76 @@ async function fetchJSON(url, headers = {}) {
 
 app.use(express.static(path.join(ROOT, 'public')));
 
+// Mock data for UI testing when APIs are unavailable
+function getMockScan(timeframe = '5m') {
+  const symbols = ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT', 'XRP/USDT:USDT', 'DOGE/USDT:USDT', 'ADA/USDT:USDT', 'LINK/USDT:USDT', 'AVAX/USDT:USDT'];
+  const mockData = symbols.map((sym, i) => {
+    const side = i % 2 === 0 ? 'LONG' : 'SHORT';
+    const price = [65000, 3500, 145, 0.62, 0.17, 0.45, 18.5, 35][i];
+    const confidence = 55 + Math.random() * 30;
+    const discoveryScore = 50 + Math.random() * 35;
+    const atr = price * 0.02;
+    const entryLow = side === 'LONG' ? price - atr * 0.25 : price - atr * 0.15;
+    const entryHigh = side === 'LONG' ? price + atr * 0.15 : price + atr * 0.25;
+    const stop = side === 'LONG' ? price - atr * 1.2 : price + atr * 1.2;
+    const tp1 = side === 'LONG' ? price + atr * 1.2 : price - atr * 1.2;
+    const tp2 = side === 'LONG' ? price + atr * 2.2 : price - atr * 2.2;
+    return {
+      symbol: sym,
+      side,
+      confidence: Math.round(confidence * 10) / 10,
+      discoveryScore: Math.round(discoveryScore * 10) / 10,
+      price,
+      priceChg5m: (Math.random() - 0.5) * 2,
+      rsi14: 40 + Math.random() * 30,
+      volSpike: 1 + Math.random() * 3,
+      obImb: 0.4 + Math.random() * 0.2,
+      oiDeltaPct: (Math.random() - 0.5) * 5,
+      funding: (Math.random() - 0.5) * 0.001,
+      takerRatio: 0.8 + Math.random() * 0.4,
+      buySellVolRatio: 0.9 + Math.random() * 0.3,
+      buySellVolNetPct: (Math.random() - 0.5) * 20,
+      whaleScore: 40 + Math.random() * 30,
+      whaleFlowPct: (Math.random() - 0.5) * 20,
+      whaleBurstZ: (Math.random() - 0.5) * 2,
+      whaleNetUsd: (Math.random() - 0.5) * 1000000,
+      whaleTradeCount: Math.floor(Math.random() * 50),
+      altfinsBias: 'NEUTRAL',
+      atr14: atr,
+      entryLow,
+      entryHigh,
+      stop,
+      tp1,
+      tp2,
+      rr: 1.8 + Math.random(),
+      invalidation: side === 'LONG' ? '5m close below EMA50' : '5m close above EMA50',
+      riskUsd: 50,
+      sizeUnits: 50 / Math.abs((entryLow + entryHigh) / 2 - stop),
+      positionNotional: 50 / Math.abs((entryLow + entryHigh) / 2 - stop) * price,
+      supportDistPct: Math.random() * 3,
+      resistanceDistPct: Math.random() * 3,
+      srProximity: 60 + Math.random() * 30,
+      srZone: side === 'LONG' ? 'support' : 'resistance',
+      srNearestType: side === 'LONG' ? 'support' : 'resistance',
+      srNearestDistPct: Math.random() * 2,
+      srSource: 'local',
+      supportLevel: price * 0.95,
+      resistanceLevel: price * 1.05,
+      srBreakoutScore: 50 + (Math.random() - 0.5) * 10,
+      srApproachingScore: 50 + (Math.random() - 0.5) * 10,
+      srObOsScore: 50 + (Math.random() - 0.5) * 10,
+      srSignalSource: 'mock',
+      discoveryWhy: i % 3 === 0 ? 'Flow intensity 1.25 | OIΔ 2.3%' : i % 3 === 1 ? 'Volume burst 2.1x | Whale accumulation 72' : 'Taker buy pressure | Positioning shift',
+      why: side === 'LONG' ? 'EMA20>EMA50 | RSI 58.2 | OI↑ + Price↑' : 'EMA20<EMA50 | RSI 42.1 | Funding overheated'
+    };
+  });
+  return mockData.sort((a, b) => b.confidence - a.confidence);
+}
+
 function runScan(timeframe = '', provider = 'binance') {
+  if (MOCK_MODE) {
+    return Promise.resolve(getMockScan(timeframe).map(x => ({ ...x, _provider: provider })));
+  }
   return new Promise((resolve, reject) => {
     const env = { ...process.env, OUTPUT: 'json', TOP_N: process.env.TOP_N || '25', MAX_IDEAS: process.env.MAX_IDEAS || '15', DATA_PROVIDER: provider };
     if (timeframe) env.TIMEFRAME = timeframe;
@@ -137,6 +216,25 @@ app.get('/api/chart', async (req, res) => {
   try {
     const symbol = String(req.query.symbol || 'BTC/USDT:USDT').toUpperCase();
     const tf = String(req.query.tf || '5m');
+    
+    if (MOCK_MODE) {
+      const basePrice = symbol.includes('BTC') ? 65000 : symbol.includes('ETH') ? 3500 : symbol.includes('SOL') ? 145 : 1;
+      const candles = [];
+      const now = Date.now();
+      const tfMs = { '1m': 60000, '5m': 300000, '15m': 900000, '1h': 3600000, '4h': 14400000 }[tf] || 300000;
+      let price = basePrice;
+      for (let i = 300; i > 0; i--) {
+        const t = now - i * tfMs;
+        price = price * (1 + (Math.random() - 0.5) * 0.02);
+        const o = price * (1 + (Math.random() - 0.5) * 0.005);
+        const c = price;
+        const h = Math.max(o, c) * (1 + Math.random() * 0.005);
+        const l = Math.min(o, c) * (1 - Math.random() * 0.005);
+        candles.push({ t, o, h, l, c, v: Math.random() * 1000 });
+      }
+      return res.json({ ok: true, symbol, timeframe: tf, candles, oi: [], funding: [], taker: [] });
+    }
+    
     const raw = symbol.replace('/USDT:USDT', 'USDT').replace('/USDT', 'USDT');
     const interval = tf;
 
@@ -174,6 +272,6 @@ app.get('/api/chart', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Dashboard: http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Dashboard: http://0.0.0.0:${PORT}`);
 });

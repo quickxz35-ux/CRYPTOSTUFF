@@ -1,0 +1,21 @@
+# Environment variables (contains API keys!)
+.env
+
+# Node modules
+node_modules/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Watchlist (user-specific)
+watchlist.txt

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crypto Screener | Phase 1</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🎯 Phase 1 Screener</h1>
+      <div class="controls">
+        <select id="timeframe">
+          <option value="5m" selected>5m</option>
+          <option value="15m">15m</option>
+          <option value="1h">1h</option>
+          <option value="4h">4h</option>
+        </select>
+        <select id="mode">
+          <option value="union" selected>Union (any provider)</option>
+          <option value="consensus">Consensus (2+ agree)</option>
+        </select>
+        <select id="view">
+          <option value="discovery" selected>Discovery View</option>
+          <option value="entries">Entry Setups</option>
+          <option value="all">All Signals</option>
+        </select>
+        <button id="refreshBtn">↻ Refresh</button>
+      </div>
+    </header>
+
+    <div class="filters">
+      <label><input type="checkbox" id="filterLong" checked> LONG</label>
+      <label><input type="checkbox" id="filterShort" checked> SHORT</label>
+      <label>Min Confidence: <input type="range" id="minConf" min="0" max="100" value="45"> <span id="confVal">45</span></label>
+      <label>Top: <input type="number" id="topN" value="20" min="5" max="50" style="width:60px;"></label>
+    </div>
+
+    <div id="status" class="status">Click Refresh to load data</div>
+
+    <div id="results" class="results"></div>
+
+    <div id="detailModal" class="modal hidden">
+      <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2 id="detailTitle"></h2>
+        <div id="detailChart" class="chart"></div>
+        <div id="detailData"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
