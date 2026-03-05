@@ -5,21 +5,20 @@ const API = {
     if (!res.ok) throw new Error(`Scan failed: ${res.status}`);
     return res.json();
   },
-  
   async chart(symbol, tf = '5m') {
     const url = `/api/chart?symbol=${encodeURIComponent(symbol)}&tf=${tf}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Chart failed: ${res.status}`);
     return res.json();
   },
-  
   async providers() {
     const res = await fetch('/api/providers');
     return res.json();
   }
 };
 
-// Per-card state storage
+// Global state
+let currentData = [];
 const cardViewState = new Map();
 const cardTimeframeState = new Map();
 
@@ -47,23 +46,23 @@ const UI = {
   topN: document.getElementById('topN'),
   modal: document.getElementById('detailModal'),
   modalClose: document.querySelector('.close'),
-  
+
   setStatus(msg, type = 'info') {
     this.statusEl.textContent = msg;
     this.statusEl.className = 'status ' + (type === 'loading' ? 'loading' : type === 'error' ? 'error' : type === 'success' ? 'success' : '');
   },
-  
+
   formatNum(n, digits = 2) {
     if (n === undefined || n === null) return '-';
     return Number(n).toFixed(digits);
   },
-  
+
   getScoreClass(val) {
     if (val >= 70) return 'high';
     if (val >= 50) return 'med';
     return 'low';
   },
-  
+
   renderMetricBar(label, value, maxVal = 100, unit = '') {
     const pct = Math.min(100, Math.max(0, (value / maxVal) * 100));
     const colorClass = pct >= 70 ? 'high' : pct >= 40 ? 'med' : 'low';
@@ -77,16 +76,11 @@ const UI = {
       </div>
     `;
   },
-  
+
   renderBuySellBars(item) {
-    // Two separate bars: Buy Volume and Sell Volume
     const buyRatio = item.buySellRatio || item.takerRatio || 1;
-    const totalVol = item.volSpike || 1;
-    
-    // Normalize to show relative strength (0-100 scale)
     const buyStrength = Math.min(100, buyRatio * 50);
     const sellStrength = Math.min(100, (1 / buyRatio) * 50);
-    
     return `
       <div class="metric-bar-group">
         <div class="metric-bar mini">
@@ -106,9 +100,8 @@ const UI = {
       </div>
     `;
   },
-  
+
   renderDiscoveryBars(item) {
-    // Discovery metrics: Volume, OI Delta, Funding, Taker Flow, Whale Score, S/R Prox
     const metrics = [
       { label: 'VOLUME Δ', val: Math.min(100, item.volSpike * 20), raw: item.volSpike, unit: 'x' },
       { label: 'OI DELTA', val: Math.min(100, Math.abs(item.oiDeltaPct || 0) * 5), raw: item.oiDeltaPct, unit: '%' },
@@ -117,41 +110,29 @@ const UI = {
       { label: 'WHALE SCORE', val: Math.min(100, (item.whaleScore || 0) * 2), raw: item.whaleScore, unit: '' },
       { label: 'S/R PROX', val: item.srProximity || 0, raw: item.srProximity, unit: '%' }
     ];
-    
     return metrics.map(m => this.renderMetricBar(m.label, m.val, 100, m.unit)).join('');
   },
-  
+
   renderEntryBars(item) {
-    // Entry-specific bars: RSI, Volume MoM, OI/Price Correlation
     let html = '';
-    
-    // RSI bar
     html += this.renderMetricBar('RSI', Math.min(100, Math.max(0, item.rsi14 || 50)), 100, '');
-    
-    // Volume MoM bar
     html += this.renderMetricBar('VOL MoM', Math.min(100, (item.volSpike || 1) * 25), 100, 'x');
-    
-    // OI/Price Correlation bar
     html += this.renderMetricBar('OI/PRICE CORR', Math.min(100, Math.max(0, (item.oiPriceCorr || 0) * 50 + 50)), 100, '');
-    
-    // Buy vs Sell Volume - two separate bars
     html += this.renderBuySellBars(item);
-    
     return html;
   },
-  
+
   renderCard(item) {
     const symbol = item.symbol;
     const cardView = cardViewState.get(symbol) || 'discovery';
     const cardTf = cardTimeframeState.get(symbol) || this.timeframe.value || '5m';
     const hasEntry = item.entryLow && item.entryHigh;
-    
-    // Build timeframe options
-    const tfOptions = TIMEFRAMES.map(tf => 
+
+    const tfOptions = TIMEFRAMES.map(tf =>
       `<option value="${tf.value}" ${tf.value === cardTf ? 'selected' : ''}>${tf.label}</option>`
     ).join('');
-    
-    let html = `
+
+    return `
       <div class="card ${item.side}" data-symbol="${symbol}">
         <div class="card-header">
           <span class="symbol">${symbol}</span>
@@ -160,7 +141,7 @@ const UI = {
             <span class="side-badge ${item.side}">${item.side}</span>
           </div>
         </div>
-        
+
         <div class="card-scores">
           <div class="score-box">
             <div class="label">Confidence</div>
@@ -179,28 +160,28 @@ const UI = {
           </div>
           ` : ''}
         </div>
-        
+
         <div class="card-metrics compact">
           <div class="metric"><span>Price</span><span>$${this.formatNum(item.price, item.price < 1 ? 6 : 2)}</span></div>
           <div class="metric"><span>TF</span><span>${cardTf.toUpperCase()}</span></div>
         </div>
-        
+
         <div class="view-toggle">
           <button class="view-btn ${cardView === 'discovery' ? 'active' : ''}" data-view="discovery" data-symbol="${symbol}">🔍 DISCOVERY</button>
           <button class="view-btn ${cardView === 'entry' ? 'active' : ''}" data-view="entry" data-symbol="${symbol}">🎯 ENTRY</button>
         </div>
-        
-        <div class="bars-container">
+
+        <div class="bars-container" data-bars="${cardView}">
           ${cardView === 'discovery' ? this.renderDiscoveryBars(item) : this.renderEntryBars(item)}
         </div>
-        
+
         ${hasEntry ? `
         <div class="entry-summary">
           <div class="entry-row"><span class="label">Entry</span><span class="value">${this.formatNum(item.entryLow, 4)} - ${this.formatNum(item.entryHigh, 4)}</span></div>
           <div class="entry-row"><span class="label">SL / TP1</span><span class="value" style="color:#f85149">${this.formatNum(item.stop, 4)}</span> / <span style="color:#3fb950">${this.formatNum(item.tp1, 4)}</span></div>
         </div>
         ` : ''}
-        
+
         ${item.why || item.discoveryWhy ? `
         <div class="card-why">
           ${item.discoveryWhy ? `<strong>Discovery:</strong> ${item.discoveryWhy}<br>` : ''}
@@ -209,153 +190,107 @@ const UI = {
         ` : ''}
       </div>
     `;
-    return html;
   },
-  
+
+  updateCardView(symbol, view) {
+    cardViewState.set(symbol, view);
+    const card = this.resultsEl.querySelector(`.card[data-symbol="${symbol}"]`);
+    if (!card) return;
+
+    // Find the item in current data
+    const item = currentData.find(i => i.symbol === symbol);
+    if (!item) return;
+
+    // Update active states on buttons
+    card.querySelectorAll('.view-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === view);
+    });
+
+    // Update bars content
+    const barsContainer = card.querySelector('.bars-container');
+    if (barsContainer) {
+      barsContainer.innerHTML = view === 'discovery'
+        ? this.renderDiscoveryBars(item)
+        : this.renderEntryBars(item);
+      barsContainer.dataset.bars = view;
+    }
+  },
+
+  updateCardTimeframe(symbol, tf) {
+    cardTimeframeState.set(symbol, tf);
+    // Show status - actual data refresh requires API call
+    this.setStatus(`${symbol}: Timeframe set to ${tf} — click Refresh to load data`, 'info');
+
+    // Update the displayed TF text
+    const card = this.resultsEl.querySelector(`.card[data-symbol="${symbol}"]`);
+    if (card) {
+      const tfDisplay = card.querySelector('.card-metrics.compact .metric:last-child span:last-child');
+      if (tfDisplay) tfDisplay.textContent = tf.toUpperCase();
+    }
+  },
+
   renderEmpty(msg = 'No signals found') {
     return `<div class="empty-state"><h3>${msg}</h3><p>Try adjusting filters or refreshing</p></div>`;
   },
-  
+
   filterData(data) {
     let filtered = data.data || [];
-    
-    // Side filter
     const allowLong = this.filterLong.checked;
     const allowShort = this.filterShort.checked;
     filtered = filtered.filter(i => (i.side === 'LONG' && allowLong) || (i.side === 'SHORT' && allowShort));
-    
-    // Confidence filter
     const minConf = parseInt(this.minConf.value);
     filtered = filtered.filter(i => i.confidence >= minConf);
-    
-    // Top N
     const topN = parseInt(this.topN.value);
     filtered = filtered.slice(0, topN);
-    
     return filtered;
   },
-  
+
+  attachCardHandlers() {
+    // View toggle handlers - use event delegation
+    this.resultsEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('.view-btn');
+      if (!btn) return;
+      e.stopPropagation();
+      const symbol = btn.dataset.symbol;
+      const view = btn.dataset.view;
+      this.updateCardView(symbol, view);
+    });
+
+    // Timeframe change handlers - use event delegation
+    this.resultsEl.addEventListener('change', (e) => {
+      const select = e.target.closest('.card-tf-select');
+      if (!select) return;
+      e.stopPropagation();
+      const symbol = select.dataset.symbol;
+      const tf = select.value;
+      this.updateCardTimeframe(symbol, tf);
+    });
+
+    // Detail click handlers
+    this.resultsEl.addEventListener('click', (e) => {
+      const card = e.target.closest('.card');
+      if (!card) return;
+      if (e.target.closest('.view-toggle') || e.target.closest('.card-controls')) return;
+      this.showDetail(card.dataset.symbol);
+    });
+  },
+
   render(data) {
+    currentData = data.data || [];
     const filtered = this.filterData(data);
     if (!filtered.length) {
       this.resultsEl.innerHTML = this.renderEmpty();
       return;
     }
     this.resultsEl.innerHTML = filtered.map(item => this.renderCard(item)).join('');
-    
-    // Add view toggle handlers
-    this.resultsEl.querySelectorAll('.view-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const symbol = btn.dataset.symbol;
-        const view = btn.dataset.view;
-        cardViewState.set(symbol, view);
-        // Re-render just this card
-        const item = filtered.find(i => i.symbol === symbol);
-        if (item) {
-          const card = this.resultsEl.querySelector(`.card[data-symbol="${symbol}"]`);
-          if (card) {
-            const parent = card.parentElement;
-            card.outerHTML = this.renderCard(item);
-            // Re-attach handlers to the newly created card
-            const newCard = parent.querySelector(`.card[data-symbol="${symbol}"]`);
-            if (newCard) {
-              // All handlers attached via attachSingleCardHandlers
-            }
-          }
-        }
-      });
-    });
-    
-    // Add timeframe change handlers
-    this.resultsEl.querySelectorAll('.card-tf-select').forEach(select => {
-      select.addEventListener('change', (e) => {
-        e.stopPropagation();
-        const symbol = select.dataset.symbol;
-        const tf = select.value;
-        cardTimeframeState.set(symbol, tf);
-        // Trigger refresh for this card (would need API support)
-        this.setStatus(`${symbol}: Switched to ${tf} timeframe`, 'info');
-      });
-    });
-    
-    // Add detail click handlers (but not on controls)
-    this.resultsEl.querySelectorAll('.card').forEach(card => {
-      card.addEventListener('click', (e) => {
-        // Don't trigger if clicking controls
-        if (e.target.closest('.view-toggle') || e.target.closest('.card-controls')) return;
-        this.showDetail(card.dataset.symbol);
-      });
-    });
-  },
-  
-  attachSingleCardHandlers(cardEl, parent) {
-    const sym = cardEl.dataset.symbol;
-    // View toggle handlers
-    cardEl.querySelectorAll('.view-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const vw = btn.dataset.view;
-        cardViewState.set(sym, vw);
-        const itm = this.filterData({data: currentData}).find(i => i.symbol === sym);
-        if (itm) {
-          cardEl.outerHTML = this.renderCard(itm);
-          const reCard = parent.querySelector(`.card[data-symbol="${sym}"]`);
-          if (reCard) this.attachSingleCardHandlers(reCard, parent);
-        }
-      });
-    });
-    // Timeframe handler
-    cardEl.querySelectorAll('.card-tf-select').forEach(select => {
-      select.addEventListener('change', (e) => {
-        e.stopPropagation();
-        cardTimeframeState.set(sym, select.value);
-        this.setStatus(`${sym}: Switched to ${select.value} timeframe (refresh to apply)`, 'info');
-      });
-    });
-    // Detail click
-    cardEl.addEventListener('click', (e) => {
-      if (e.target.closest('.view-toggle') || e.target.closest('.card-controls')) return;
-      this.showDetail(sym);
-    });
   },
 
-  attachCardHandlers(container) {
-    container.querySelectorAll('.view-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const symbol = btn.dataset.symbol;
-        const view = btn.dataset.view;
-        cardViewState.set(symbol, view);
-        const itm = this.filterData({data: currentData}).find(i => i.symbol === symbol);
-        if (itm) {
-          const card = container.querySelector(`.card[data-symbol="${symbol}"]`);
-          if (card) {
-            card.outerHTML = this.renderCard(itm);
-            const newCard = container.querySelector(`.card[data-symbol="${symbol}"]`);
-            if (newCard) this.attachSingleCardHandlers(newCard, container);
-          }
-        }
-      });
-    });
-    container.querySelectorAll('.card-tf-select').forEach(select => {
-      select.addEventListener('change', (e) => {
-        e.stopPropagation();
-        const symbol = select.dataset.symbol;
-        const tf = select.value;
-        cardTimeframeState.set(symbol, tf);
-        this.setStatus(`${symbol}: Switched to ${tf} timeframe (refresh to apply)`, 'info');
-      });
-    });
-  },
-  
   async showDetail(symbol) {
     document.getElementById('detailTitle').textContent = symbol;
     this.modal.classList.remove('hidden');
-    // Chart would go here - simplified for now
-    document.getElementById('detailData').innerHTML = '<p>Chart loading... (need to fetch /api/chart)</p>';
+    document.getElementById('detailData').innerHTML = '<p>Chart loading...</p>';
   },
-  
+
   hideDetail() {
     this.modal.classList.add('hidden');
   }
@@ -365,14 +300,14 @@ const UI = {
 UI.refreshBtn.addEventListener('click', async () => {
   UI.setStatus('Scanning...', 'loading');
   UI.refreshBtn.disabled = true;
-  
+
   try {
     const tf = UI.timeframe.value;
     const mode = UI.mode.value;
     const result = await API.scan(tf, ['binance'], mode);
-    
+
     if (!result.ok) throw new Error(result.error);
-    
+
     UI.render(result);
     const count = UI.filterData(result).length;
     UI.setStatus(`Found ${count} signals (${result.data?.length || 0} total) | TF: ${tf} | Mode: ${mode}`, 'success');
@@ -397,7 +332,10 @@ UI.modal.addEventListener('click', (e) => {
   if (e.target === UI.modal) UI.hideDetail();
 });
 
-// Auto-refresh every 60s while page is open
+// Attach card handlers once
+UI.attachCardHandlers();
+
+// Auto-refresh every 60s
 setInterval(() => {
   if (!UI.refreshBtn.disabled) UI.refreshBtn.click();
 }, 60000);
