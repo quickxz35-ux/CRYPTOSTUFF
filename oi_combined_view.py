@@ -12,6 +12,8 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
+from source_routing import normalize_source_alias
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Accept": "application/json",
@@ -187,6 +189,49 @@ def fetch_symbol_coinalyze(symbol: str, timeframe: str, api_key: str) -> Dict[st
     return out
 
 
+def fetch_symbol_manual(symbol: str, timeframe: str, manual_oi: float, manual_change: float) -> Dict[str, Any]:
+    return {
+        "symbol": symbol.upper(),
+        "venues": [
+            {
+                "exchange": "MANUAL",
+                "symbol": symbol.upper(),
+                "timeframe": timeframe,
+                "oi_notional_usd": manual_oi,
+                "oi_notional_change_usd": manual_change,
+                "timestamp": None,
+            }
+        ],
+        "errors": [],
+        "combined_oi_notional_usd": manual_oi,
+        "combined_oi_change_usd": manual_change,
+    }
+
+
+def fetch_symbol_mcp(symbol: str, timeframe: str, mcp_map: Dict[str, Any]) -> Dict[str, Any]:
+    row = mcp_map.get(symbol.upper(), {})
+    if not isinstance(row, dict):
+        return {"symbol": symbol.upper(), "venues": [], "errors": ["MCP: symbol_not_found"], "combined_oi_notional_usd": 0.0, "combined_oi_change_usd": 0.0}
+    oi_now = to_float(row.get("combined_oi_notional_usd", row.get("oi_notional_usd")))
+    oi_chg = to_float(row.get("combined_oi_change_usd", row.get("oi_change_usd")))
+    return {
+        "symbol": symbol.upper(),
+        "venues": [
+            {
+                "exchange": "MCP",
+                "symbol": symbol.upper(),
+                "timeframe": timeframe,
+                "oi_notional_usd": oi_now,
+                "oi_notional_change_usd": oi_chg,
+                "timestamp": None,
+            }
+        ],
+        "errors": [],
+        "combined_oi_notional_usd": oi_now,
+        "combined_oi_change_usd": oi_chg,
+    }
+
+
 def parse_symbols(raw: str) -> List[str]:
     return [s.strip().upper() for s in raw.split(",") if s.strip()]
 
@@ -217,7 +262,10 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Combined Binance+OKX open interest view")
     p.add_argument("--symbols", required=True, help="Comma-separated symbols, e.g. BTC,ETH,XRP")
     p.add_argument("--profile", choices=["custom", "ltf", "mtf", "htf"], default="mtf")
-    p.add_argument("--source", choices=["auto", "exchange_api", "coinalyze"], default="auto")
+    p.add_argument("--source", choices=["auto", "exchange_api", "coinalyze", "manual", "mcp", "api"], default="auto")
+    p.add_argument("--mcp-input-file", default="", help="JSON file for --source mcp")
+    p.add_argument("--manual-oi-notional-usd", type=float, default=0.0)
+    p.add_argument("--manual-oi-change-usd", type=float, default=0.0)
     p.add_argument("--timeframe", default="1h", help="5m|15m|30m|1h|2h|4h|6h|12h|1d")
     p.add_argument("--format", choices=["table", "json"], default="table")
     args = p.parse_args()
@@ -225,15 +273,34 @@ def main() -> None:
     effective_timeframe, effective_profile = resolve_timeframe(args.profile, args.timeframe)
     symbols = parse_symbols(args.symbols)
     coinalyze_key = os.environ.get("COINALYZE_API_KEY", "").strip()
+    source = normalize_source_alias(args.source, {"api": "exchange_api"})
+    mcp_map: Dict[str, Any] = {}
+    if source == "mcp":
+        if not args.mcp_input_file:
+            print(json.dumps({"error": "mcp_input_file_required_for_mcp_source"}, indent=2))
+            return
+        try:
+            with open(args.mcp_input_file, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            symbols_map = payload.get("symbols", payload) if isinstance(payload, dict) else {}
+            if isinstance(symbols_map, dict):
+                mcp_map = {str(k).upper(): v for k, v in symbols_map.items()}
+        except Exception:
+            print(json.dumps({"error": "failed_to_read_mcp_input_file"}, indent=2))
+            return
     results: List[Dict[str, Any]] = []
     for s in symbols:
-        if args.source == "exchange_api":
+        if source == "exchange_api":
             results.append(fetch_symbol(s, effective_timeframe))
-        elif args.source == "coinalyze":
+        elif source == "coinalyze":
             if not coinalyze_key:
                 results.append({"symbol": s, "venues": [], "errors": ["COINALYZE: missing_api_key"], "combined_oi_notional_usd": 0.0, "combined_oi_change_usd": 0.0})
             else:
                 results.append(fetch_symbol_coinalyze(s, effective_timeframe, coinalyze_key))
+        elif source == "manual":
+            results.append(fetch_symbol_manual(s, effective_timeframe, args.manual_oi_notional_usd, args.manual_oi_change_usd))
+        elif source == "mcp":
+            results.append(fetch_symbol_mcp(s, effective_timeframe, mcp_map))
         else:
             row = fetch_symbol(s, effective_timeframe)
             if row["venues"]:

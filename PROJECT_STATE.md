@@ -45,3 +45,4 @@ Build modular crypto decision parts (A/B/C/D/E), tune each independently, then c
 - Use global timeframe router for consistent profile alignment across all parts.
 - Keep parts standalone; do not integrate full machine yet.
 - Continue extending unified source switching across all parts (`auto|provider|manual`).
+- Shared routing helper added: `source_routing.py`.

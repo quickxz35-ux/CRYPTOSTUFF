@@ -31,7 +31,7 @@ This file is the pinned session resume map for module-first development.
 - Orderbook weight
 - State thresholds (bullish/neutral/bearish cutoffs)
 - Timeframe/profile selector
-- Data source selector (`exchange_api|coinalyze|auto`)
+- Data source selector (`exchange_api|coinalyze|mcp|manual|auto`)
 
 ### Part B Liquidity
 - Inflow/outflow/netflow weighting
@@ -86,8 +86,9 @@ This file is the pinned session resume map for module-first development.
   - `min_pressure_floor`
   - `neutral_composite_band`
 - Source contract:
-  - `--source manual` (local tuning values)
-  - `--source mcp --mcp-input-file <json>` (MCP-fed payload)
+  - `--source glassnode_mcp|manual|auto` (`mcp` alias supported)
+  - `--fallback-source none|glassnode_mcp|manual`
+  - `--mcp-input-file <json>` for MCP-fed payloads
   - No direct Glassnode REST/api-key mode in Part E runtime path.
   - Provider routing:
     - `--provider glassnode_mcp|manual|auto`

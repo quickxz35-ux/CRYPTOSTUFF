@@ -17,6 +17,8 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
+from source_routing import normalize_source_alias, resolve_source_order as resolve_source_order_generic
+
 HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
 HEATMAP_SUPPORTED = {"BNB", "BTC", "DOGE", "ETH", "SOL", "TON", "XRP"}
 
@@ -476,24 +478,22 @@ def run_symbol(args: argparse.Namespace, symbol: str, source: str) -> Dict[str, 
 
 
 def resolve_source_order(args: argparse.Namespace) -> List[str]:
-    # Backward-compat: if provider not explicitly set, use --source behavior.
-    if args.provider == "manual":
-        return ["manual"]
-    if args.provider == "glassnode_mcp":
-        return ["mcp"]
+    # New contract:
+    # --source auto|glassnode_mcp|manual (mcp alias -> glassnode_mcp)
+    # --fallback-source none|glassnode_mcp|manual
+    src = normalize_source_alias(args.source, {"mcp": "glassnode_mcp", "api": "glassnode_mcp"})
+    fbs = normalize_source_alias(args.fallback_source, {"mcp": "glassnode_mcp", "api": "glassnode_mcp"})
 
-    # auto
-    first = args.source
-    second = "manual" if first == "mcp" else "mcp"
-    if args.fallback_provider == "none":
-        return [first]
-    if args.fallback_provider == "manual":
-        second = "manual"
-    if args.fallback_provider == "glassnode_mcp":
-        second = "mcp"
-    if first == second:
-        return [first]
-    return [first, second]
+    # Backward compatibility with old flags if explicitly provided.
+    if getattr(args, "provider", "auto") != "auto":
+        src = "glassnode_mcp" if args.provider == "glassnode_mcp" else args.provider
+    if getattr(args, "fallback_provider", "none") != "none":
+        fbs = "glassnode_mcp" if args.fallback_provider == "glassnode_mcp" else args.fallback_provider
+
+    order = resolve_source_order_generic(src, fbs, default_primary="glassnode_mcp")
+    # Internal engine uses "mcp" token.
+    mapped = ["mcp" if x == "glassnode_mcp" else x for x in order]
+    return mapped
 
 
 def run_symbol_with_fallback(args: argparse.Namespace, symbol: str, source_order: List[str]) -> Dict[str, Any]:
@@ -540,7 +540,9 @@ def as_table(rows: List[Dict[str, Any]], event_tf: str) -> str:
 def main() -> None:
     p = argparse.ArgumentParser(description="Part E liquidation context mapper")
     p.add_argument("--symbols", required=True, help="Comma-separated symbols, e.g. BTC,ETH")
-    p.add_argument("--source", choices=["mcp", "manual"], default="mcp")
+    p.add_argument("--source", choices=["auto", "glassnode_mcp", "mcp", "manual", "api"], default="auto")
+    p.add_argument("--fallback-source", choices=["none", "glassnode_mcp", "manual", "mcp", "api"], default="manual")
+    # Legacy flags kept for compatibility.
     p.add_argument("--provider", choices=["glassnode_mcp", "manual", "auto"], default="auto")
     p.add_argument("--fallback-provider", choices=["none", "glassnode_mcp", "manual"], default="manual")
     p.add_argument("--profile", choices=["ltf", "mtf", "htf", "custom"], default="mtf")
@@ -575,7 +577,8 @@ def main() -> None:
     symbols = parse_symbols(args.symbols)
     args._mcp_map = {}
 
-    if args.source == "mcp":
+    src_norm = normalize_source_alias(args.source, {"api": "glassnode_mcp", "mcp": "glassnode_mcp"})
+    if src_norm == "glassnode_mcp" or args.provider == "glassnode_mcp":
         if not args.mcp_input_file:
             print(json.dumps({"error": "mcp_input_file_required_for_mcp_source"}, indent=2))
             return
