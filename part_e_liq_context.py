@@ -325,9 +325,30 @@ def pick_invalidation(
     return opp, {"low": p - z, "high": p + z}
 
 
+def build_not_available_row(symbol: str, reason: str) -> Dict[str, Any]:
+    return {
+        "symbol": symbol,
+        "provider_used": "n/a",
+        "price_now": 0.0,
+        "poi_up": [],
+        "poi_down": [],
+        "nearest_up_magnet": {"price": 0.0, "distance_pct": 0.0, "strength": 0.0},
+        "nearest_down_magnet": {"price": 0.0, "distance_pct": 0.0, "strength": 0.0},
+        "pull_up_pressure": 0.0,
+        "pull_down_pressure": 0.0,
+        "trend_pull_bias": "N/A",
+        "sweep_risk_state": "N/A",
+        "entry_mode": "N/A",
+        "nearest_opposing_poi": {"price": 0.0, "distance_pct": 0.0, "strength": 0.0},
+        "invalidation_zone": {"low": 0.0, "high": 0.0},
+        "part_e_reason": reason,
+        "not_available": True,
+    }
+
+
 def run_symbol(args: argparse.Namespace, symbol: str, source: str) -> Dict[str, Any]:
     if symbol not in HEATMAP_SUPPORTED:
-        return {"symbol": symbol, "error": "unsupported_for_heatmap_family"}
+        return build_not_available_row(symbol, "not_available: heatmap_family_unsupported")
 
     if source == "mcp":
         row = args._mcp_map.get(symbol, {})
@@ -494,6 +515,11 @@ def as_table(rows: List[Dict[str, Any]], event_tf: str) -> str:
     for r in rows:
         if "error" in r:
             lines.append(f"{r['symbol']}: ERROR {r['error']}")
+            continue
+        if r.get("not_available"):
+            lines.append(f"{r['symbol']}: N/A (not available)")
+            lines.append(f"  Reason: {r['part_e_reason']}")
+            lines.append("")
             continue
         lines.append(
             f"{r['symbol']}: mode={r['entry_mode']} bias={r['trend_pull_bias']} sweep={r['sweep_risk_state']}"
