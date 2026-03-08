@@ -11,7 +11,7 @@ This file is the pinned session resume map for module-first development.
 | B Liquidity | `liquidity_module.py` | Built | exchange inflow/outflow/net, exchange balance delta, whale-to-exchange | `liquidity_score`, `liquidity_state`, `liquidity_reason` | Manual/API |
 | C Derivatives | `part_c_derivatives.py` | Built | OI change, perp volume change, funding, optional LS block | `derivatives_score`, `derivatives_state`, `derivatives_reason` | Manual/API |
 | D Liquidation | `part_d_liquidation.py` | Built | liquidation heatmap + liquidation event signals | `liq_level_bias`, `liq_event_state`, `liq_composite_state`, `liq_reason` | Manual/API |
-| E Liquidation Context Layer | `part_e_liq_context.py` | Built (standalone) | liquidation level POIs + liquidation events + entry heatmap net | chart-focused POI/magnet/entry context output | Manual/API |
+| E Liquidation Context Layer | `part_e_liq_context.py` | Built (standalone) | liquidation level POIs + liquidation events + entry heatmap net | chart-focused POI/magnet/entry context output | Manual/MCP-fed |
 
 ## Supporting Modules
 
@@ -20,6 +20,7 @@ This file is the pinned session resume map for module-first development.
 | Structure | `structure_module.py` | Bias-style structure read (`Continue`, `Wait Pullback`, `Mean Revert`, `Avoid`) |
 | Momentum | `momentum_module.py` | Timeframe-aware momentum read |
 | Stablecoin Utility | `stablecoin_deployment_candidates.py` | Stablecoin-related helper logic/candidate handling |
+| Part E MCP Feed Builder | `part_e_mcp_feed.py` | Converts raw MCP snapshots into Part E `--source mcp` payload format |
 | Smoke Tests | `smoke_test_parts.ps1` | Contract checks for core parts |
 
 ## Tunables By Part
@@ -77,6 +78,15 @@ This file is the pinned session resume map for module-first development.
   - `bias_deadband`
   - `invalidation_pad_pct`
   - `entry_scale`
+  - `min_pressure_floor`
+  - `neutral_composite_band`
+- Source contract:
+  - `--source manual` (local tuning values)
+  - `--source mcp --mcp-input-file <json>` (MCP-fed payload)
+  - No direct Glassnode REST/api-key mode in Part E runtime path.
+  - Provider routing:
+    - `--provider glassnode_mcp|manual|auto`
+    - `--fallback-provider none|glassnode_mcp|manual`
 
 ## Data Source Policy (Current)
 - Active build/test sources: current project sources only.

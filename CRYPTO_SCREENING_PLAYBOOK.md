@@ -507,4 +507,15 @@ Coverage:
 
 Current runtime status:
 - Manual mode validated.
-- API mode requires GLASSNODE_API_KEY in env.
+- Glassnode policy is MCP-only; use MCP-fed data path for live runs.
+
+## Part E Provider Routing (Locked)
+
+Part E runtime is MCP/manual only with source switching:
+- `--provider glassnode_mcp|manual|auto`
+- `--fallback-provider none|glassnode_mcp|manual`
+
+Part E MCP feed builder:
+- `part_e_mcp_feed.py`
+- Purpose: convert raw MCP metric snapshots into Part E payload contract consumed by:
+  - `part_e_liq_context.py --source mcp --mcp-input-file <json>`

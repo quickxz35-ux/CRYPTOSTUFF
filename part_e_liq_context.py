@@ -13,13 +13,41 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import os
 import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
 HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
 HEATMAP_SUPPORTED = {"BNB", "BTC", "DOGE", "ETH", "SOL", "TON", "XRP"}
+
+PROFILE_MAP: Dict[str, Dict[str, float | int | str]] = {
+    # Tighter proximity and less chop tolerance for fast trading context.
+    "ltf": {
+        "event_tf": "10m",
+        "max_levels": 8,
+        "near_poi_pct": 0.55,
+        "chop_ratio": 0.88,
+        "bias_deadband": 0.06,
+        "invalidation_pad_pct": 0.20,
+    },
+    "mtf": {
+        "event_tf": "1h",
+        "max_levels": 6,
+        "near_poi_pct": 0.80,
+        "chop_ratio": 0.80,
+        "bias_deadband": 0.08,
+        "invalidation_pad_pct": 0.25,
+    },
+    # Wider context with slower triggers.
+    "htf": {
+        "event_tf": "24h",
+        "max_levels": 5,
+        "near_poi_pct": 1.20,
+        "chop_ratio": 0.72,
+        "bias_deadband": 0.10,
+        "invalidation_pad_pct": 0.35,
+    },
+}
 
 
 def http_get_json(url: str) -> Any:
@@ -67,11 +95,47 @@ def parse_levels(raw: str) -> List[Tuple[float, float]]:
     return out
 
 
+def parse_level_pairs_obj(obj: Any) -> List[Tuple[float, float]]:
+    out: List[Tuple[float, float]] = []
+    if not isinstance(obj, list):
+        return out
+    for item in obj:
+        if isinstance(item, (list, tuple)) and len(item) >= 2:
+            p = to_float(item[0])
+            s = to_float(item[1])
+            if p > 0 and s > 0:
+                out.append((p, s))
+        elif isinstance(item, dict):
+            p = to_float(item.get("price"))
+            s = to_float(item.get("strength", item.get("value", 0.0)))
+            if p > 0 and s > 0:
+                out.append((p, s))
+    return out
+
+
 def normalize_weights(w_loc: float, w_evt: float, w_ent: float) -> Tuple[float, float, float]:
     s = w_loc + w_evt + w_ent
     if s <= 0:
         return 0.55, 0.25, 0.20
     return w_loc / s, w_evt / s, w_ent / s
+
+
+def apply_profile_defaults(args: argparse.Namespace) -> str:
+    profile = args.profile
+    if profile == "custom":
+        return "custom"
+
+    cfg = PROFILE_MAP.get(profile)
+    if not cfg:
+        return "custom"
+
+    args.event_tf = str(cfg["event_tf"])
+    args.max_levels = int(cfg["max_levels"])
+    args.near_poi_pct = float(cfg["near_poi_pct"])
+    args.chop_ratio = float(cfg["chop_ratio"])
+    args.bias_deadband = float(cfg["bias_deadband"])
+    args.invalidation_pad_pct = float(cfg["invalidation_pad_pct"])
+    return profile
 
 
 def fetch_price(symbol: str) -> float:
@@ -203,7 +267,18 @@ def pick_entry_mode(
     nearest_up: Optional[Dict[str, Any]],
     nearest_down: Optional[Dict[str, Any]],
     near_poi_pct: float,
+    min_pressure_floor: float,
+    neutral_composite_band: float,
+    composite_score: float,
 ) -> str:
+    # No edge if both directional pulls are tiny.
+    if sweep_state == "two_sided_chop":
+        return "avoid"
+
+    # If composite conviction is weak and no strong pressure exists, stand down.
+    if abs(composite_score) <= neutral_composite_band:
+        return "avoid"
+
     if sweep_state == "two_sided_chop":
         return "avoid"
 
@@ -250,53 +325,32 @@ def pick_invalidation(
     return opp, {"low": p - z, "high": p + z}
 
 
-def run_symbol(args: argparse.Namespace, symbol: str) -> Dict[str, Any]:
+def run_symbol(args: argparse.Namespace, symbol: str, source: str) -> Dict[str, Any]:
     if symbol not in HEATMAP_SUPPORTED:
         return {"symbol": symbol, "error": "unsupported_for_heatmap_family"}
 
-    if args.source == "api":
-        key = os.environ.get("GLASSNODE_API_KEY", "").strip()
-        if not key:
-            return {"symbol": symbol, "error": "missing_glassnode_api_key"}
-        price_now = fetch_price(symbol)
+    if source == "mcp":
+        row = args._mcp_map.get(symbol, {})
+        if not isinstance(row, dict):
+            return {"symbol": symbol, "error": "missing_mcp_symbol_payload"}
+
+        price_now = to_float(row.get("price_now"))
         if price_now <= 0:
-            return {"symbol": symbol, "error": "missing_price_now"}
+            return {"symbol": symbol, "error": "missing_price_now_in_mcp_payload"}
 
-        heatmap_rows = gn_series(
-            "/v1/metrics/derivatives/liquidation_heatmap",
-            symbol,
-            "1h",
-            key,
-            limit=1,
-        )
-        if not heatmap_rows:
-            return {"symbol": symbol, "error": "missing_liquidation_heatmap_data"}
+        up_pairs = parse_level_pairs_obj(row.get("up_levels"))
+        down_pairs = parse_level_pairs_obj(row.get("down_levels"))
+        if not up_pairs and not down_pairs:
+            heatmap_pairs = parse_level_pairs_obj(row.get("heatmap_pairs"))
+            up_pairs, down_pairs = split_levels_around_price(heatmap_pairs, price_now, args.max_levels)
 
-        pairs: List[Tuple[float, float]] = []
-        collect_price_value_pairs(heatmap_rows[-1], pairs)
-        if not pairs:
-            return {"symbol": symbol, "error": "insufficient_heatmap_price_levels"}
+        if not up_pairs and not down_pairs:
+            return {"symbol": symbol, "error": "missing_liq_levels_in_mcp_payload"}
 
-        up_pairs, down_pairs = split_levels_around_price(pairs, price_now, args.max_levels)
-        entry_net = gn_last_value(
-            "/v1/metrics/derivatives/liquidation_entry_price_heatmap_net",
-            symbol,
-            "1h",
-            key,
-        )
-        liq_long_now = gn_last_value(
-            "/v1/metrics/derivatives/futures_liquidated_volume_long_sum",
-            symbol,
-            args.event_tf,
-            key,
-        )
-        liq_short_now = gn_last_value(
-            "/v1/metrics/derivatives/futures_liquidated_volume_short_sum",
-            symbol,
-            args.event_tf,
-            key,
-        )
-    else:
+        entry_net = to_float(row.get("entry_net"))
+        liq_long_now = to_float(row.get("liq_long_now"))
+        liq_short_now = to_float(row.get("liq_short_now"))
+    elif source == "manual":
         price_now = args.manual_price_now
         if price_now <= 0:
             return {"symbol": symbol, "error": "manual_price_now_required"}
@@ -306,6 +360,8 @@ def run_symbol(args: argparse.Namespace, symbol: str) -> Dict[str, Any]:
         entry_net = args.manual_entry_net
         liq_long_now = args.manual_liq_long_now
         liq_short_now = args.manual_liq_short_now
+    else:
+        return {"symbol": symbol, "error": "unsupported_provider_source"}
 
     poi_up = [level_obj(price_now, p, s, "liq_cluster") for p, s in up_pairs]
     poi_down = [level_obj(price_now, p, s, "liq_cluster") for p, s in down_pairs]
@@ -345,6 +401,8 @@ def run_symbol(args: argparse.Namespace, symbol: str) -> Dict[str, Any]:
         trend_pull_bias = "down"
 
     sweep_risk_state = pick_sweep_state(pull_up_pressure, pull_down_pressure, args.chop_ratio)
+    if max(pull_up_pressure, pull_down_pressure) < args.min_pressure_floor:
+        sweep_risk_state = "two_sided_chop"
     entry_mode = pick_entry_mode(
         sweep_risk_state,
         location_score,
@@ -353,6 +411,9 @@ def run_symbol(args: argparse.Namespace, symbol: str) -> Dict[str, Any]:
         nearest_up,
         nearest_down,
         args.near_poi_pct,
+        args.min_pressure_floor,
+        args.neutral_composite_band,
+        composite,
     )
 
     nearest_opp, invalidation_zone = pick_invalidation(entry_mode, nearest_up, nearest_down, args.invalidation_pad_pct)
@@ -365,6 +426,7 @@ def run_symbol(args: argparse.Namespace, symbol: str) -> Dict[str, Any]:
 
     return {
         "symbol": symbol,
+        "provider_used": "glassnode_mcp" if source == "mcp" else "manual",
         "price_now": price_now,
         "poi_up": poi_up,
         "poi_down": poi_down,
@@ -392,6 +454,41 @@ def run_symbol(args: argparse.Namespace, symbol: str) -> Dict[str, Any]:
     }
 
 
+def resolve_source_order(args: argparse.Namespace) -> List[str]:
+    # Backward-compat: if provider not explicitly set, use --source behavior.
+    if args.provider == "manual":
+        return ["manual"]
+    if args.provider == "glassnode_mcp":
+        return ["mcp"]
+
+    # auto
+    first = args.source
+    second = "manual" if first == "mcp" else "mcp"
+    if args.fallback_provider == "none":
+        return [first]
+    if args.fallback_provider == "manual":
+        second = "manual"
+    if args.fallback_provider == "glassnode_mcp":
+        second = "mcp"
+    if first == second:
+        return [first]
+    return [first, second]
+
+
+def run_symbol_with_fallback(args: argparse.Namespace, symbol: str, source_order: List[str]) -> Dict[str, Any]:
+    last_err: Dict[str, Any] = {"symbol": symbol, "error": "unknown_provider_error"}
+    attempts: List[str] = []
+    for src in source_order:
+        attempts.append(src)
+        out = run_symbol(args, symbol, src)
+        if "error" not in out:
+            out["provider_attempts"] = attempts
+            return out
+        last_err = out
+    last_err["provider_attempts"] = attempts
+    return last_err
+
+
 def as_table(rows: List[Dict[str, Any]], event_tf: str) -> str:
     lines = [f"Liquidation Context (Part E) event_tf={event_tf}", ""]
     for r in rows:
@@ -417,7 +514,10 @@ def as_table(rows: List[Dict[str, Any]], event_tf: str) -> str:
 def main() -> None:
     p = argparse.ArgumentParser(description="Part E liquidation context mapper")
     p.add_argument("--symbols", required=True, help="Comma-separated symbols, e.g. BTC,ETH")
-    p.add_argument("--source", choices=["api", "manual"], default="api")
+    p.add_argument("--source", choices=["mcp", "manual"], default="mcp")
+    p.add_argument("--provider", choices=["glassnode_mcp", "manual", "auto"], default="auto")
+    p.add_argument("--fallback-provider", choices=["none", "glassnode_mcp", "manual"], default="manual")
+    p.add_argument("--profile", choices=["ltf", "mtf", "htf", "custom"], default="mtf")
     p.add_argument("--event-tf", choices=["10m", "1h", "24h"], default="1h")
     p.add_argument("--format", choices=["table", "json"], default="table")
 
@@ -432,6 +532,8 @@ def main() -> None:
     p.add_argument("--bias-deadband", type=float, default=0.08)
     p.add_argument("--entry-scale", type=float, default=1.0, help="Scaling denominator for entry_net -> [-1,+1]")
     p.add_argument("--invalidation-pad-pct", type=float, default=0.25)
+    p.add_argument("--min-pressure-floor", type=float, default=0.05)
+    p.add_argument("--neutral-composite-band", type=float, default=0.10)
 
     # Manual inputs.
     p.add_argument("--manual-price-now", type=float, default=0.0)
@@ -440,18 +542,51 @@ def main() -> None:
     p.add_argument("--manual-entry-net", type=float, default=0.0)
     p.add_argument("--manual-liq-long-now", type=float, default=0.0)
     p.add_argument("--manual-liq-short-now", type=float, default=0.0)
+    p.add_argument("--mcp-input-file", default="", help="Path to MCP-fed JSON payload for --source mcp")
 
     args = p.parse_args()
+    effective_profile = apply_profile_defaults(args)
     symbols = parse_symbols(args.symbols)
+    args._mcp_map = {}
 
-    rows = [run_symbol(args, s) for s in symbols]
+    if args.source == "mcp":
+        if not args.mcp_input_file:
+            print(json.dumps({"error": "mcp_input_file_required_for_mcp_source"}, indent=2))
+            return
+        try:
+            with open(args.mcp_input_file, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+        except Exception:
+            print(json.dumps({"error": "failed_to_read_mcp_input_file"}, indent=2))
+            return
+        if not isinstance(payload, dict):
+            print(json.dumps({"error": "invalid_mcp_payload_root"}, indent=2))
+            return
+        symbols_map = payload.get("symbols", {})
+        if not isinstance(symbols_map, dict):
+            print(json.dumps({"error": "invalid_mcp_payload_symbols_map"}, indent=2))
+            return
+        args._mcp_map = {str(k).upper(): v for k, v in symbols_map.items()}
+
+    source_order = resolve_source_order(args)
+    rows = [run_symbol_with_fallback(args, s, source_order) for s in symbols]
 
     if args.format == "json":
-        print(json.dumps({"results": rows}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "profile": effective_profile,
+                    "intervals": {"event_tf": args.event_tf, "heatmap_tf": "1h"},
+                    "source_order": source_order,
+                    "results": rows,
+                },
+                indent=2,
+            )
+        )
     else:
+        print(f"Profile: {effective_profile}")
         print(as_table(rows, args.event_tf))
 
 
 if __name__ == "__main__":
     main()
-

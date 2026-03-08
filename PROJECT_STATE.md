@@ -6,7 +6,7 @@ Updated: 2026-03-08 (America/Chicago)
 Build modular crypto decision parts (A/B/C/D/E), tune each independently, then combine later.
 
 ## Active Data Stack
-- Glassnode (when `GLASSNODE_API_KEY` set)
+- Glassnode MCP (MCP-only policy)
 - Cryptometer (when `CRYPTOMETER_API_KEY` set)
 
 ## Disabled but Remembered
@@ -18,8 +18,9 @@ Build modular crypto decision parts (A/B/C/D/E), tune each independently, then c
 - Part A Pressure: Built
 - Part B Liquidity: Built + tuned
 - Part C Derivatives: Built + tuned + overheat label + LS block
-- Part D Liquidation Positioning: Built (API requires GLASSNODE key)
+- Part D Liquidation Positioning: Built (run via manual now; MCP-feed policy)
 - Part E: Built standalone (`part_e_liq_context.py`)
+- Part E MCP feed builder: Built (`part_e_mcp_feed.py`)
 
 ## Key Decisions Locked
 - Build/tune each part independently first.
@@ -37,5 +38,6 @@ Build modular crypto decision parts (A/B/C/D/E), tune each independently, then c
 - `structure_module.py`
 
 ## Current Next Step
-- Tune Part D and Part E thresholds with live data after setting `GLASSNODE_API_KEY`.
+- Tune Part D and Part E thresholds using MCP-fed live payloads.
+- Validate provider fallback behavior (`--provider auto`) on missing/partial inputs.
 - Keep parts standalone; do not integrate full machine yet.
