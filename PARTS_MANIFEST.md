@@ -39,6 +39,7 @@ This file is the pinned session resume map for module-first development.
 - Whale transfer impact weighting
 - Balance-regime sensitivity (mild/medium/strong)
 - Timeframe/profile selector
+- Data source selector (`glassnode_api|mcp|auto|manual`)
 
 ### Part C Derivatives
 - OI change weight
@@ -59,6 +60,7 @@ This file is the pinned session resume map for module-first development.
 - Composite state thresholds
 - Heatmap timeframe handling (currently fixed `1h`)
 - Symbol support enforcement list
+- Data source selector (`glassnode_api|mcp|auto|manual`)
 
 ### Part E Liquidation Context Layer (Planned)
 - Composition weights across:

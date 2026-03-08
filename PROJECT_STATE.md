@@ -8,6 +8,7 @@ Build modular crypto decision parts (A/B/C/D/E), tune each independently, then c
 ## Active Data Stack
 - Glassnode MCP (MCP-only policy)
 - Cryptometer (when `CRYPTOMETER_API_KEY` set)
+- Coinalyze (when `COINALYZE_API_KEY` set)
 
 ## Disabled but Remembered
 - Messari
@@ -43,3 +44,4 @@ Build modular crypto decision parts (A/B/C/D/E), tune each independently, then c
 - Validate provider fallback behavior (`--provider auto`) on missing/partial inputs.
 - Use global timeframe router for consistent profile alignment across all parts.
 - Keep parts standalone; do not integrate full machine yet.
+- Continue extending unified source switching across all parts (`auto|provider|manual`).

@@ -282,11 +282,55 @@ def compute_liquidity_score(
     return score, state, reason
 
 
+def load_json_file(path: str) -> Dict[str, Any]:
+    with open(path, "r", encoding="utf-8") as f:
+        obj = json.load(f)
+    return obj if isinstance(obj, dict) else {}
+
+
+def metrics_from_mcp_payload(path: str) -> Dict[str, Any]:
+    obj = load_json_file(path)
+    required = [
+        "inflow_usd",
+        "outflow_usd",
+        "netflow_usd",
+        "netflow_context_abs_avg",
+        "whale_to_exchange_usd",
+    ]
+    missing = [k for k in required if k not in obj]
+    if missing:
+        raise ValueError(f"mcp_payload_missing_keys:{','.join(missing)}")
+
+    regime = str(obj.get("exchange_balance_regime", "NEUTRAL")).upper()
+    regime_score = to_float(obj.get("exchange_balance_regime_score"))
+    if regime_score == 0.0 and regime in BALANCE_REGIME_TO_SCORE:
+        regime_score = BALANCE_REGIME_TO_SCORE[regime]
+
+    return {
+        "inflow_usd": to_float(obj.get("inflow_usd")),
+        "outflow_usd": to_float(obj.get("outflow_usd")),
+        "netflow_usd": to_float(obj.get("netflow_usd")),
+        "netflow_context_abs_avg": max(to_float(obj.get("netflow_context_abs_avg")), 1.0),
+        "exchange_balance_delta_pct": to_float(obj.get("exchange_balance_delta_pct")),
+        "exchange_balance_level": str(obj.get("exchange_balance_level", "MID")).upper(),
+        "exchange_balance_trend": str(obj.get("exchange_balance_trend", "FLAT")).upper(),
+        "exchange_balance_regime": regime,
+        "exchange_balance_regime_score": clamp(regime_score, -1.0, 1.0),
+        "whale_to_exchange_usd": to_float(obj.get("whale_to_exchange_usd")),
+    }
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="Standalone liquidity module (Part B)")
     p.add_argument("--profile", choices=["custom", "ltf", "mtf", "htf"], default="mtf")
     p.add_argument("--assets", default="USDT,USDC", help="Comma-separated assets (e.g., USDT,USDC or BTC)")
-    p.add_argument("--source", choices=["api", "manual"], default="api")
+    p.add_argument(
+        "--source",
+        choices=["auto", "api", "glassnode_api", "mcp", "manual"],
+        default="auto",
+        help="Data source: auto/glassnode_api/mcp/manual (api alias -> glassnode_api)",
+    )
+    p.add_argument("--mcp-input-file", default="", help="JSON file for --source mcp")
 
     p.add_argument("--event-interval", default="1h")
     p.add_argument("--context-interval", default="24h")
@@ -321,16 +365,28 @@ def main() -> None:
 
     assets = parse_assets(args.assets)
 
-    if args.source == "api":
-        key = os.environ.get("GLASSNODE_API_KEY", "").strip()
-        if not key:
-            payload = {
-                "error": "missing_glassnode_api_key",
-                "hint": "Set GLASSNODE_API_KEY or run with --source manual",
-            }
+    source_choice = "glassnode_api" if args.source == "api" else args.source
+    source_used = ""
+    if source_choice in ("glassnode_api", "mcp", "auto"):
+        metrics = None
+        mcp_err = ""
+        if source_choice in ("mcp", "auto") and args.mcp_input_file:
+            try:
+                metrics = metrics_from_mcp_payload(args.mcp_input_file)
+                source_used = "mcp"
+            except Exception as exc:
+                mcp_err = str(exc)
+        if metrics is None and source_choice in ("glassnode_api", "auto"):
+            key = os.environ.get("GLASSNODE_API_KEY", "").strip()
+            if key:
+                metrics = fetch_api_metrics(assets, event_i, context_i, balance_i, key)
+                source_used = "glassnode_api"
+        if metrics is None:
+            payload = {"error": "no_viable_source", "hint": "Provide --mcp-input-file or GLASSNODE_API_KEY"}
+            if mcp_err:
+                payload["mcp_error"] = mcp_err
             print(json.dumps(payload, indent=2))
             return
-        metrics = fetch_api_metrics(assets, event_i, context_i, balance_i, key)
     else:
         reg = args.manual_exchange_balance_regime
         metrics = {
@@ -345,6 +401,7 @@ def main() -> None:
             "exchange_balance_regime_score": BALANCE_REGIME_TO_SCORE.get(reg, 0.0),
             "whale_to_exchange_usd": args.manual_whale_to_exchange_usd,
         }
+        source_used = "manual"
 
     score, state, reason = compute_liquidity_score(
         metrics["inflow_usd"],
@@ -361,6 +418,7 @@ def main() -> None:
 
     out = {
         "part": "B_liquidity",
+        "source_used": source_used,
         "profile": effective_profile,
         "assets": assets,
         "intervals": {"event": event_i, "context": context_i, "balance": balance_i},

@@ -189,11 +189,57 @@ def as_table(rows: List[Dict[str, Any]], profile: str, heatmap_tf: str, event_tf
     return "\n".join(lines)
 
 
+def load_json_file(path: str) -> Dict[str, Any]:
+    with open(path, "r", encoding="utf-8") as f:
+        obj = json.load(f)
+    return obj if isinstance(obj, dict) else {}
+
+
+def metrics_from_mcp_payload(path: str, symbol: str) -> Dict[str, Any]:
+    obj = load_json_file(path)
+    # supported formats:
+    # 1) top-level symbol map: {"BTC": {...metrics...}}
+    # 2) keyed map: {"symbols": {"BTC": {...}}}
+    # 3) part-like list: {"results":[{"symbol":"BTC","metrics":{...}}]}
+    src: Dict[str, Any] = {}
+    if symbol in obj and isinstance(obj[symbol], dict):
+        src = obj[symbol]
+    elif isinstance(obj.get("symbols"), dict) and isinstance(obj["symbols"].get(symbol), dict):
+        src = obj["symbols"][symbol]
+    elif isinstance(obj.get("results"), list):
+        for r in obj["results"]:
+            if isinstance(r, dict) and str(r.get("symbol", "")).upper() == symbol:
+                m = r.get("metrics")
+                src = m if isinstance(m, dict) else r
+                break
+
+    required = ["liq_heatmap_net", "liq_total_now", "liq_total_avg", "liq_long_now", "liq_short_now"]
+    missing = [k for k in required if k not in src]
+    if missing:
+        raise ValueError(f"mcp_payload_missing_keys:{','.join(missing)}")
+
+    liq_total_now = to_float(src.get("liq_total_now"))
+    return {
+        "liq_heatmap_net": to_float(src.get("liq_heatmap_net")),
+        "liq_total_now": liq_total_now,
+        "liq_total_prev": to_float(src.get("liq_total_prev", liq_total_now)),
+        "liq_total_avg": max(to_float(src.get("liq_total_avg")), 1.0),
+        "liq_long_now": to_float(src.get("liq_long_now")),
+        "liq_short_now": to_float(src.get("liq_short_now")),
+    }
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="Standalone liquidation positioning module (Part D)")
     p.add_argument("--symbols", required=True, help="Comma-separated symbols, e.g. BTC,ETH,SOL")
     p.add_argument("--profile", choices=["custom", "ltf", "mtf", "htf"], default="mtf")
-    p.add_argument("--source", choices=["api", "manual"], default="api")
+    p.add_argument(
+        "--source",
+        choices=["auto", "api", "glassnode_api", "mcp", "manual"],
+        default="auto",
+        help="Data source: auto/glassnode_api/mcp/manual (api alias -> glassnode_api)",
+    )
+    p.add_argument("--mcp-input-file", default="", help="JSON file for --source mcp")
 
     p.add_argument("--heatmap-tf", default="1h", help="Fixed by design; keep at 1h")
     p.add_argument("--event-tf", choices=["10m", "1h", "24h"], default="1h")
@@ -221,12 +267,27 @@ def main() -> None:
             results.append({"symbol": symbol, "error": "unsupported_for_heatmap_family"})
             continue
 
-        if args.source == "api":
-            key = os.environ.get("GLASSNODE_API_KEY", "").strip()
-            if not key:
-                results.append({"symbol": symbol, "error": "missing_glassnode_api_key"})
+        source_choice = "glassnode_api" if args.source == "api" else args.source
+        source_used = ""
+        if source_choice in ("glassnode_api", "mcp", "auto"):
+            metrics = None
+            if source_choice in ("mcp", "auto") and args.mcp_input_file:
+                try:
+                    metrics = metrics_from_mcp_payload(args.mcp_input_file, symbol)
+                    source_used = "mcp"
+                except Exception:
+                    metrics = None
+            if metrics is None and source_choice in ("glassnode_api", "auto"):
+                key = os.environ.get("GLASSNODE_API_KEY", "").strip()
+                if key:
+                    metrics = fetch_api_metrics(symbol, heatmap_tf, event_tf, key)
+                    source_used = "glassnode_api"
+            if metrics is None:
+                if source_choice == "mcp":
+                    results.append({"symbol": symbol, "error": "invalid_or_missing_mcp_payload"})
+                else:
+                    results.append({"symbol": symbol, "error": "no_viable_source"})
                 continue
-            metrics = fetch_api_metrics(symbol, heatmap_tf, event_tf, key)
         else:
             metrics = {
                 "liq_heatmap_net": args.manual_heatmap_net,
@@ -236,6 +297,7 @@ def main() -> None:
                 "liq_long_now": args.manual_liq_long_now,
                 "liq_short_now": args.manual_liq_short_now,
             }
+            source_used = "manual"
 
         level_bias = classify_level_bias(metrics["liq_heatmap_net"], args.net_threshold)
         event_state, spike_ratio = classify_event_state(
@@ -256,6 +318,7 @@ def main() -> None:
             {
                 "symbol": symbol,
                 "profile": effective_profile,
+                "source_used": source_used,
                 "intervals": {"heatmap": heatmap_tf, "event": event_tf},
                 "metrics": metrics,
                 "liq_level_bias": level_bias,
