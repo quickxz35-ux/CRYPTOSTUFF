@@ -21,6 +21,7 @@ Build modular crypto decision parts (A/B/C/D/E), tune each independently, then c
 - Part D Liquidation Positioning: Built (run via manual now; MCP-feed policy)
 - Part E: Built standalone (`part_e_liq_context.py`)
 - Part E MCP feed builder: Built (`part_e_mcp_feed.py`)
+- Global timeframe router: Built (`global_timeframe_router.py`)
 
 ## Key Decisions Locked
 - Build/tune each part independently first.
@@ -40,4 +41,5 @@ Build modular crypto decision parts (A/B/C/D/E), tune each independently, then c
 ## Current Next Step
 - Tune Part D and Part E thresholds using MCP-fed live payloads.
 - Validate provider fallback behavior (`--provider auto`) on missing/partial inputs.
+- Use global timeframe router for consistent profile alignment across all parts.
 - Keep parts standalone; do not integrate full machine yet.

@@ -19,6 +19,7 @@ This file is the pinned session resume map for module-first development.
 |---|---|---|
 | Structure | `structure_module.py` | Bias-style structure read (`Continue`, `Wait Pullback`, `Mean Revert`, `Avoid`) |
 | Momentum | `momentum_module.py` | Timeframe-aware momentum read |
+| Global Timeframe Router | `global_timeframe_router.py` | One profile switch (`ltf/mtf/htf`) that emits aligned per-part settings and command templates |
 | Stablecoin Utility | `stablecoin_deployment_candidates.py` | Stablecoin-related helper logic/candidate handling |
 | Part E MCP Feed Builder | `part_e_mcp_feed.py` | Converts raw MCP snapshots into Part E `--source mcp` payload format |
 | Smoke Tests | `smoke_test_parts.ps1` | Contract checks for core parts |
@@ -97,6 +98,13 @@ This file is the pinned session resume map for module-first development.
 2. Tune each part standalone.
 3. Freeze output contracts.
 4. Integrate parts later into a unified machine.
+
+## Global Timeframe Component
+- Use:
+  - `python global_timeframe_router.py --profile mtf --symbols BTC,ETH,SOL --assets USDT,USDC --format table`
+- Output:
+  - aligned part profiles
+  - ready-to-run command templates for Part A/B/C/D/E + Structure + Momentum
 
 ## Resume Prompt (Session Starter)
 Use this at session start:

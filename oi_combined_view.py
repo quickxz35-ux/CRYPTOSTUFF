@@ -17,6 +17,7 @@ HEADERS = {
 
 BINANCE_PERIODS = {"5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"}
 OKX_PERIOD_MAP = {"5m": "5m", "1h": "1H", "1d": "1D"}
+PROFILE_TIMEFRAME_MAP = {"ltf": "5m", "mtf": "1h", "htf": "4h"}
 
 
 def http_get_json(url: str) -> Any:
@@ -109,6 +110,12 @@ def parse_symbols(raw: str) -> List[str]:
     return [s.strip().upper() for s in raw.split(",") if s.strip()]
 
 
+def resolve_timeframe(profile: str, timeframe: str) -> Tuple[str, str]:
+    if profile in PROFILE_TIMEFRAME_MAP:
+        return PROFILE_TIMEFRAME_MAP[profile], profile
+    return timeframe, "custom"
+
+
 def as_table(results: List[Dict[str, Any]], timeframe: str) -> str:
     lines = [f"Combined OI View ({timeframe})", ""]
     for row in results:
@@ -128,17 +135,24 @@ def as_table(results: List[Dict[str, Any]], timeframe: str) -> str:
 def main() -> None:
     p = argparse.ArgumentParser(description="Combined Binance+OKX open interest view")
     p.add_argument("--symbols", required=True, help="Comma-separated symbols, e.g. BTC,ETH,XRP")
+    p.add_argument("--profile", choices=["custom", "ltf", "mtf", "htf"], default="mtf")
     p.add_argument("--timeframe", default="1h", help="5m|15m|30m|1h|2h|4h|6h|12h|1d")
     p.add_argument("--format", choices=["table", "json"], default="table")
     args = p.parse_args()
 
+    effective_timeframe, effective_profile = resolve_timeframe(args.profile, args.timeframe)
     symbols = parse_symbols(args.symbols)
-    results = [fetch_symbol(s, args.timeframe) for s in symbols]
+    results = [fetch_symbol(s, effective_timeframe) for s in symbols]
 
     if args.format == "json":
-        print(json.dumps({"timeframe": args.timeframe, "results": results}, indent=2))
+        print(
+            json.dumps(
+                {"profile": effective_profile, "timeframe": effective_timeframe, "results": results},
+                indent=2,
+            )
+        )
     else:
-        print(as_table(results, args.timeframe))
+        print(as_table(results, effective_timeframe))
 
 
 if __name__ == "__main__":

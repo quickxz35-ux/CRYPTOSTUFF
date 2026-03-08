@@ -519,3 +519,12 @@ Part E MCP feed builder:
 - `part_e_mcp_feed.py`
 - Purpose: convert raw MCP metric snapshots into Part E payload contract consumed by:
   - `part_e_liq_context.py --source mcp --mcp-input-file <json>`
+
+## Global Timeframe Router (Built)
+
+Script:
+- `global_timeframe_router.py`
+
+Purpose:
+- Apply one profile (`ltf|mtf|htf`) across Part A/B/C/D/E + Structure + Momentum.
+- Emit aligned command templates so all parts run on the same timeframe style.
