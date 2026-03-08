@@ -24,39 +24,49 @@ PART_SCRIPTS = {
     "momentum": "momentum_module.py",
 }
 
-PROFILE_MAP: Dict[str, Dict[str, str]] = {
-    "ltf": {
-        "part_a_profile": "ltf",
-        "part_b_profile": "ltf",
-        "part_c_profile": "ltf",
-        "part_d_profile": "ltf",
-        "part_e_profile": "ltf",
-        "structure_profile": "ltf",
-        "momentum_profile": "ltf",
-    },
-    "mtf": {
-        "part_a_profile": "mtf",
-        "part_b_profile": "mtf",
-        "part_c_profile": "mtf",
-        "part_d_profile": "mtf",
-        "part_e_profile": "mtf",
-        "structure_profile": "mtf",
-        "momentum_profile": "mtf",
-    },
-    "htf": {
-        "part_a_profile": "htf",
-        "part_b_profile": "htf",
-        "part_c_profile": "htf",
-        "part_d_profile": "htf",
-        "part_e_profile": "htf",
-        "structure_profile": "htf",
-        "momentum_profile": "htf",
-    },
+DEFAULT_PROFILE_MAP: Dict[str, Dict[str, str]] = {
+    k: {
+        "part_a_profile": k,
+        "part_b_profile": k,
+        "part_c_profile": k,
+        "part_d_profile": k,
+        "part_e_profile": k,
+        "structure_profile": k,
+        "momentum_profile": k,
+    }
+    for k in ("ltf", "mtf", "htf")
 }
 
 
 def parse_csv(raw: str) -> str:
     return ",".join([x.strip().upper() for x in raw.split(",") if x.strip()])
+
+
+def load_profile_map(profiles_file: str) -> Dict[str, Dict[str, str]]:
+    try:
+        with open(profiles_file, "r", encoding="utf-8") as f:
+            obj = json.load(f)
+    except Exception:
+        return DEFAULT_PROFILE_MAP
+    if not isinstance(obj, dict):
+        return DEFAULT_PROFILE_MAP
+
+    out: Dict[str, Dict[str, str]] = {}
+    for prof in ("ltf", "mtf", "htf"):
+        section = obj.get(prof, {})
+        pp = section.get("part_profiles", {}) if isinstance(section, dict) else {}
+        if not isinstance(pp, dict):
+            pp = {}
+        out[prof] = {
+            "part_a_profile": str(pp.get("part_a", prof)),
+            "part_b_profile": str(pp.get("part_b", prof)),
+            "part_c_profile": str(pp.get("part_c", prof)),
+            "part_d_profile": str(pp.get("part_d", prof)),
+            "part_e_profile": str(pp.get("part_e", prof)),
+            "structure_profile": str(pp.get("structure", prof)),
+            "momentum_profile": str(pp.get("momentum", prof)),
+        }
+    return out
 
 
 def cmd(py: str, script: str, args: List[str]) -> str:
@@ -107,6 +117,7 @@ def main() -> None:
     p.add_argument("--assets", default="USDT,USDC", help="Comma-separated assets for Part B")
     p.add_argument("--python", default="python", help="Python executable")
     p.add_argument("--part-e-mcp-input-file", default="part_e_payload.json")
+    p.add_argument("--profiles-file", default="timeframe_profiles.json", help="JSON profile map file")
     p.add_argument("--output-file", default="", help="Optional file path to save emitted JSON")
     p.add_argument("--format", choices=["json", "table"], default="json")
     args = p.parse_args()
@@ -114,7 +125,8 @@ def main() -> None:
     root = os.path.dirname(os.path.abspath(__file__))
     symbols = parse_csv(args.symbols)
     assets = parse_csv(args.assets)
-    cfg = PROFILE_MAP[args.profile]
+    profile_map = load_profile_map(os.path.join(root, args.profiles_file))
+    cfg = profile_map.get(args.profile, DEFAULT_PROFILE_MAP[args.profile])
     commands = build_commands(root, args.python, cfg, symbols, assets, args.part_e_mcp_input_file)
 
     payload = {

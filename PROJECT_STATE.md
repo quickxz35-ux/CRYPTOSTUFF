@@ -38,6 +38,9 @@ Build modular crypto decision parts (A/B/C/D/E), tune each independently, then c
 - `part_d_liquidation.py`
 - `momentum_module.py`
 - `structure_module.py`
+- `timeframe_profiles.json`
+- `run_all_parts.ps1`
+- `pretrade_snapshot.ps1`
 
 ## Current Next Step
 - Tune Part D and Part E thresholds using MCP-fed live payloads.

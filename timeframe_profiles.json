@@ -1,0 +1,56 @@
+{
+  "ltf": {
+    "part_profiles": {
+      "part_a": "ltf",
+      "part_b": "ltf",
+      "part_c": "ltf",
+      "part_d": "ltf",
+      "part_e": "ltf",
+      "structure": "ltf",
+      "momentum": "ltf"
+    },
+    "source_defaults": {
+      "part_a": "coinalyze",
+      "part_b": "manual",
+      "part_c": "coinalyze",
+      "part_d": "manual",
+      "part_e": "manual"
+    }
+  },
+  "mtf": {
+    "part_profiles": {
+      "part_a": "mtf",
+      "part_b": "mtf",
+      "part_c": "mtf",
+      "part_d": "mtf",
+      "part_e": "mtf",
+      "structure": "mtf",
+      "momentum": "mtf"
+    },
+    "source_defaults": {
+      "part_a": "coinalyze",
+      "part_b": "manual",
+      "part_c": "coinalyze",
+      "part_d": "manual",
+      "part_e": "manual"
+    }
+  },
+  "htf": {
+    "part_profiles": {
+      "part_a": "htf",
+      "part_b": "htf",
+      "part_c": "htf",
+      "part_d": "htf",
+      "part_e": "htf",
+      "structure": "htf",
+      "momentum": "htf"
+    },
+    "source_defaults": {
+      "part_a": "coinalyze",
+      "part_b": "manual",
+      "part_c": "coinalyze",
+      "part_d": "manual",
+      "part_e": "manual"
+    }
+  }
+}

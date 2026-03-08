@@ -20,9 +20,12 @@ This file is the pinned session resume map for module-first development.
 | Structure | `structure_module.py` | Bias-style structure read (`Continue`, `Wait Pullback`, `Mean Revert`, `Avoid`) |
 | Momentum | `momentum_module.py` | Timeframe-aware momentum read |
 | Global Timeframe Router | `global_timeframe_router.py` | One profile switch (`ltf/mtf/htf`) that emits aligned per-part settings and command templates |
+| Shared Timeframe Profiles | `timeframe_profiles.json` | Central profile object used by router/runners |
 | Stablecoin Utility | `stablecoin_deployment_candidates.py` | Stablecoin-related helper logic/candidate handling |
 | Part E MCP Feed Builder | `part_e_mcp_feed.py` | Converts raw MCP snapshots into Part E `--source mcp` payload format |
 | Smoke Tests | `smoke_test_parts.ps1` | Contract checks for core parts |
+| Full Runner | `run_all_parts.ps1` | Runs Parts A/B/C/D/E + Structure + Momentum and saves JSON artifacts |
+| Pre-Trade Snapshot | `pretrade_snapshot.ps1` | One-command compact readout before entry |
 
 ## Tunables By Part
 
