@@ -31,6 +31,7 @@ This file is the pinned session resume map for module-first development.
 - Orderbook weight
 - State thresholds (bullish/neutral/bearish cutoffs)
 - Timeframe/profile selector
+- Data source selector (`exchange_api|coinalyze|auto`)
 
 ### Part B Liquidity
 - Inflow/outflow/netflow weighting
@@ -50,6 +51,7 @@ This file is the pinned session resume map for module-first development.
 - Overheat/crowding gate label behavior
 - State thresholds (bullish/neutral/bearish cutoffs)
 - Timeframe/profile selector
+- Data source selector (`exchange_api|coinalyze|auto|manual`)
 
 ### Part D Liquidation
 - Heatmap interpretation thresholds
@@ -92,6 +94,10 @@ This file is the pinned session resume map for module-first development.
 ## Data Source Policy (Current)
 - Active build/test sources: current project sources only.
 - Parked/disabled by decision (remembered, not active): Messari, Santiment, Mobula, Dune.
+- Source switching policy:
+  - Prefer explicit `--source` per module.
+  - `auto` means try primary source first, then fallback source if configured/available.
+  - New APIs/MCPs should be added as selectable providers, not hard-wired defaults.
 
 ## Build Order Policy
 1. Build each part standalone.

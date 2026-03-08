@@ -8,6 +8,7 @@ import json
 import math
 import os
 import statistics
+import time
 import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Tuple
@@ -62,6 +63,17 @@ BINANCE_KLINE_INTERVALS = {
     "1w",
     "1M",
 }
+
+COINALYZE_INTERVAL_MAP = {
+    "15m": "15min",
+    "30m": "30min",
+    "1h": "1hour",
+    "4h": "4hour",
+    "1d": "daily",
+}
+
+COINALYZE_DEFAULT_EXCHANGE = "A"  # Binance
+_COINALYZE_SYMBOL_CACHE: Dict[str, str] = {}
 
 
 def http_get_json(url: str) -> Any:
@@ -233,6 +245,110 @@ def fetch_api_metrics(symbol: str, event_i: str, context_i: str) -> Dict[str, fl
     }
 
 
+def fetch_coinalyze_market_symbol(symbol: str, cm_key: str, exchange_code: str = COINALYZE_DEFAULT_EXCHANGE) -> str:
+    key = f"{symbol}:{exchange_code}"
+    if key in _COINALYZE_SYMBOL_CACHE:
+        return _COINALYZE_SYMBOL_CACHE[key]
+
+    q = urllib.parse.urlencode({"api_key": cm_key})
+    url = f"https://api.coinalyze.net/v1/future-markets?{q}"
+    rows = safe_http_get_json(url)
+    if not isinstance(rows, list):
+        return ""
+
+    prefix = symbol.upper()
+    picks: List[str] = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        base = str(r.get("base_asset", "")).upper()
+        exch = str(r.get("exchange", "")).upper()
+        s = str(r.get("symbol", "")).strip()
+        if base == prefix and s and (not exchange_code or exch == exchange_code):
+            picks.append(s)
+    if not picks:
+        return ""
+
+    # Prefer USDT perpetual symbol names when available.
+    picks.sort(key=lambda x: (0 if "USDT" in x else 1, 0 if "PERP" in x else 1, len(x)))
+    chosen = picks[0]
+    _COINALYZE_SYMBOL_CACHE[key] = chosen
+    return chosen
+
+
+def fetch_coinalyze_history(endpoint: str, market_symbol: str, interval: str, cm_key: str) -> List[Dict[str, Any]]:
+    c_interval = COINALYZE_INTERVAL_MAP.get(interval, "1hour")
+    now_ts = int(time.time())
+    from_ts = now_ts - (3 * 24 * 3600)
+    q = urllib.parse.urlencode(
+        {
+            "symbols": market_symbol,
+            "interval": c_interval,
+            "from": from_ts,
+            "to": now_ts,
+            "api_key": cm_key,
+        }
+    )
+    url = f"https://api.coinalyze.net/v1/{endpoint}?{q}"
+    payload = safe_http_get_json(url)
+    if not isinstance(payload, list) or not payload:
+        return []
+    first = payload[0]
+    if not isinstance(first, dict):
+        return []
+    hist = first.get("history", [])
+    if not isinstance(hist, list):
+        return []
+    return [h for h in hist if isinstance(h, dict)]
+
+
+def fetch_coinalyze_metrics(symbol: str, event_i: str, context_i: str, cm_key: str) -> Dict[str, float]:
+    market_symbol = fetch_coinalyze_market_symbol(symbol, cm_key, COINALYZE_DEFAULT_EXCHANGE)
+    if not market_symbol:
+        return {
+            "source": "COINALYZE",
+            "oi_now_usd": 0.0,
+            "oi_prev_usd": 0.0,
+            "oi_change_pct": 0.0,
+            "perp_volume_now_usd": 0.0,
+            "perp_volume_prev_usd": 0.0,
+            "perp_volume_change_pct": 0.0,
+            "funding_now": 0.0,
+            "funding_avg": 0.0,
+            "funding_delta": 0.0,
+            "context_interval": context_i,
+        }
+
+    oi_hist = fetch_coinalyze_history("open-interest-history", market_symbol, event_i, cm_key)
+    fr_hist = fetch_coinalyze_history("funding-rate-history", market_symbol, event_i, cm_key)
+    vol_hist = fetch_coinalyze_history("ohlcv-history", market_symbol, event_i, cm_key)
+
+    oi_now = to_float(oi_hist[-1].get("c")) if oi_hist else 0.0
+    oi_prev = to_float(oi_hist[-2].get("c")) if len(oi_hist) > 1 else (to_float(oi_hist[-1].get("o")) if oi_hist else 0.0)
+
+    funding_now = to_float(fr_hist[-1].get("c")) if fr_hist else 0.0
+    funding_vals = [to_float(x.get("c")) for x in fr_hist] if fr_hist else []
+    funding_avg = statistics.mean(funding_vals) if funding_vals else funding_now
+
+    # ohlcv-history uses trade volume (notional may vary by market); we only use change%.
+    vol_now = to_float(vol_hist[-1].get("v")) if vol_hist else 0.0
+    vol_prev = to_float(vol_hist[-2].get("v")) if len(vol_hist) > 1 else (to_float(vol_hist[-1].get("v")) if vol_hist else 0.0)
+
+    return {
+        "source": "COINALYZE",
+        "oi_now_usd": oi_now,
+        "oi_prev_usd": oi_prev,
+        "oi_change_pct": pct_change(oi_now, oi_prev),
+        "perp_volume_now_usd": vol_now,
+        "perp_volume_prev_usd": vol_prev,
+        "perp_volume_change_pct": pct_change(vol_now, vol_prev),
+        "funding_now": funding_now,
+        "funding_avg": funding_avg,
+        "funding_delta": funding_now - funding_avg,
+        "context_interval": context_i,
+    }
+
+
 def parse_timeframes(raw: str) -> List[str]:
     out: List[str] = []
     for t in [x.strip().lower() for x in raw.split(",") if x.strip()]:
@@ -378,7 +494,12 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Standalone derivatives module (Part C)")
     p.add_argument("--symbols", required=True, help="Comma-separated symbols, e.g. BTC,ETH,XRP")
     p.add_argument("--profile", choices=["custom", "ltf", "mtf", "htf"], default="mtf")
-    p.add_argument("--source", choices=["api", "manual"], default="api")
+    p.add_argument(
+        "--source",
+        choices=["auto", "api", "exchange_api", "coinalyze", "manual"],
+        default="auto",
+        help="Data source: auto/exchange_api/coinalyze/manual (api alias -> exchange_api)",
+    )
 
     p.add_argument("--event-interval", default="1h")
     p.add_argument("--context-interval", default="4h")
@@ -413,15 +534,28 @@ def main() -> None:
 
     ls_timeframes = parse_timeframes(args.cm_ls_timeframes) if args.cm_ls_timeframes.strip() else list(DEFAULT_LS_TIMEFRAMES)
     cm_key = os.environ.get("CRYPTOMETER_API_KEY", "").strip()
+    coinalyze_key = os.environ.get("COINALYZE_API_KEY", "").strip()
 
     symbols = parse_symbols(args.symbols)
     results: List[Dict[str, Any]] = []
 
     for symbol in symbols:
-        if args.source == "api":
-            metrics = fetch_api_metrics(symbol, event_i, context_i)
-            if metrics["oi_now_usd"] == 0.0 and metrics["perp_volume_now_usd"] == 0.0:
-                results.append({"symbol": symbol, "error": "insufficient_derivatives_data"})
+        source_choice = "exchange_api" if args.source == "api" else args.source
+        if source_choice in ("exchange_api", "coinalyze", "auto"):
+            metrics = None
+            if source_choice in ("exchange_api", "auto"):
+                m1 = fetch_api_metrics(symbol, event_i, context_i)
+                if not (m1["oi_now_usd"] == 0.0 and m1["perp_volume_now_usd"] == 0.0):
+                    metrics = m1
+            if metrics is None and source_choice in ("coinalyze", "auto") and coinalyze_key:
+                m2 = fetch_coinalyze_metrics(symbol, event_i, context_i, coinalyze_key)
+                if not (m2["oi_now_usd"] == 0.0 and m2["perp_volume_now_usd"] == 0.0):
+                    metrics = m2
+            if metrics is None:
+                err = "insufficient_derivatives_data"
+                if source_choice in ("coinalyze", "auto") and not coinalyze_key and source_choice == "coinalyze":
+                    err = "missing_coinalyze_api_key"
+                results.append({"symbol": symbol, "error": err})
                 continue
         else:
             metrics = {
