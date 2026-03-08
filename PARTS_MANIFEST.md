@@ -11,7 +11,7 @@ This file is the pinned session resume map for module-first development.
 | B Liquidity | `liquidity_module.py` | Built | exchange inflow/outflow/net, exchange balance delta, whale-to-exchange | `liquidity_score`, `liquidity_state`, `liquidity_reason` | Manual/API |
 | C Derivatives | `part_c_derivatives.py` | Built | OI change, perp volume change, funding, optional LS block | `derivatives_score`, `derivatives_state`, `derivatives_reason` | Manual/API |
 | D Liquidation | `part_d_liquidation.py` | Built | liquidation heatmap + liquidation event signals | `liq_level_bias`, `liq_event_state`, `liq_composite_state`, `liq_reason` | Manual/API |
-| E Liquidation Context Layer | (planned wrapper) | Planned | liquidation volumes + heatmaps + entry heatmaps | unified liquidation context output | Planned |
+| E Liquidation Context Layer | `part_e_liq_context.py` | Built (standalone) | liquidation level POIs + liquidation events + entry heatmap net | chart-focused POI/magnet/entry context output | Manual/API |
 
 ## Supporting Modules
 
@@ -63,6 +63,20 @@ This file is the pinned session resume map for module-first development.
   - liquidation entry-price heatmaps
 - Context state thresholds
 - Reason text contract
+
+### Part E Liquidation Context Layer
+- Primary weighting lock:
+  - location POIs (`w_location`) default `0.55`
+  - liquidation events (`w_event`) default `0.25`
+  - entry context (`w_entry`) default `0.20`
+- POI controls:
+  - `max_levels`
+  - `near_poi_pct`
+- Risk/entry controls:
+  - `chop_ratio`
+  - `bias_deadband`
+  - `invalidation_pad_pct`
+  - `entry_scale`
 
 ## Data Source Policy (Current)
 - Active build/test sources: current project sources only.

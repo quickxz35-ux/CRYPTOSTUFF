@@ -19,7 +19,7 @@ Build modular crypto decision parts (A/B/C/D/E), tune each independently, then c
 - Part B Liquidity: Built + tuned
 - Part C Derivatives: Built + tuned + overheat label + LS block
 - Part D Liquidation Positioning: Built (API requires GLASSNODE key)
-- Part E: Planned/notes only
+- Part E: Built standalone (`part_e_liq_context.py`)
 
 ## Key Decisions Locked
 - Build/tune each part independently first.
@@ -37,5 +37,5 @@ Build modular crypto decision parts (A/B/C/D/E), tune each independently, then c
 - `structure_module.py`
 
 ## Current Next Step
-- Tune Part D thresholds with live data after setting `GLASSNODE_API_KEY`.
-- Then decide if Part E standalone should be built now or after Part D tuning lock.
+- Tune Part D and Part E thresholds with live data after setting `GLASSNODE_API_KEY`.
+- Keep parts standalone; do not integrate full machine yet.
