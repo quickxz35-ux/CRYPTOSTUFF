@@ -1,0 +1,80 @@
+# Crypto Tool Parts Manifest
+
+## Purpose
+This file is the pinned session resume map for module-first development.
+
+## Part Status
+
+| Part | Script | Status | Core Inputs | Core Outputs | Mode |
+|---|---|---|---|---|---|
+| A Pressure | `oi_combined_view.py` | Built | long/short pressure, orderbook pressure | `pressure_score`, `pressure_state`, `pressure_reason` | Manual/API |
+| B Liquidity | `liquidity_module.py` | Built | exchange inflow/outflow/net, exchange balance delta, whale-to-exchange | `liquidity_score`, `liquidity_state`, `liquidity_reason` | Manual/API |
+| C Derivatives | `part_c_derivatives.py` | Built | OI change, perp volume change, funding, optional LS block | `derivatives_score`, `derivatives_state`, `derivatives_reason` | Manual/API |
+| D Liquidation | `part_d_liquidation.py` | Built | liquidation heatmap + liquidation event signals | `liq_level_bias`, `liq_event_state`, `liq_composite_state`, `liq_reason` | Manual/API |
+| E Liquidation Context Layer | (planned wrapper) | Planned | liquidation volumes + heatmaps + entry heatmaps | unified liquidation context output | Planned |
+
+## Supporting Modules
+
+| Module | Script | Purpose |
+|---|---|---|
+| Structure | `structure_module.py` | Bias-style structure read (`Continue`, `Wait Pullback`, `Mean Revert`, `Avoid`) |
+| Momentum | `momentum_module.py` | Timeframe-aware momentum read |
+| Stablecoin Utility | `stablecoin_deployment_candidates.py` | Stablecoin-related helper logic/candidate handling |
+| Smoke Tests | `smoke_test_parts.ps1` | Contract checks for core parts |
+
+## Tunables By Part
+
+### Part A Pressure
+- Long/short weight
+- Orderbook weight
+- State thresholds (bullish/neutral/bearish cutoffs)
+- Timeframe/profile selector
+
+### Part B Liquidity
+- Inflow/outflow/netflow weighting
+- Exchange balance regime thresholds
+- Whale transfer impact weighting
+- Balance-regime sensitivity (mild/medium/strong)
+- Timeframe/profile selector
+
+### Part C Derivatives
+- OI change weight
+- Perp volume change weight
+- Funding pressure weight
+- LS block blend (`w_ls`)
+- LS timeframe mode:
+  - single timeframe, or
+  - `MTF Consensus Toggle` (`mtf_consensus`)
+- Overheat/crowding gate label behavior
+- State thresholds (bullish/neutral/bearish cutoffs)
+- Timeframe/profile selector
+
+### Part D Liquidation
+- Heatmap interpretation thresholds
+- Event timeframe selector (`10m`, `1h`, `24h`)
+- Composite state thresholds
+- Heatmap timeframe handling (currently fixed `1h`)
+- Symbol support enforcement list
+
+### Part E Liquidation Context Layer (Planned)
+- Composition weights across:
+  - liquidation volumes
+  - liquidation heatmaps
+  - liquidation entry-price heatmaps
+- Context state thresholds
+- Reason text contract
+
+## Data Source Policy (Current)
+- Active build/test sources: current project sources only.
+- Parked/disabled by decision (remembered, not active): Messari, Santiment, Mobula, Dune.
+
+## Build Order Policy
+1. Build each part standalone.
+2. Tune each part standalone.
+3. Freeze output contracts.
+4. Integrate parts later into a unified machine.
+
+## Resume Prompt (Session Starter)
+Use this at session start:
+
+"Load `PARTS_MANIFEST.md` and continue module-first tuning. Do not integrate all parts yet unless explicitly requested."

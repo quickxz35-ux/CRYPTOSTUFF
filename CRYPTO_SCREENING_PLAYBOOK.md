@@ -372,7 +372,7 @@ Inputs:
 
 Outputs:
 - derivatives_score
-- derivatives_state (ullish|bearish|neutral)
+- derivatives_state (bullish|bearish|neutral)
 - derivatives_reason
 
 Profiles:
@@ -416,12 +416,12 @@ Purpose:
 - Detect crowded-long conditions even when derivatives score is bullish.
 
 Behavior:
-- If base derivatives_state is ullish and all thresholds are met, state is downgraded to ullish_crowded.
+- If base derivatives_state is bullish and all thresholds are met, state is downgraded to bullish_crowded.
 
 Default thresholds:
 - oi_change_pct >= 8.0
 - perp_volume_change_pct >= 18.0
-- unding_z >= 2.5 where unding_z = funding_now / max(abs(funding_avg), 0.0001)
+- funding_z >= 2.5 where funding_z = funding_now / max(abs(funding_avg), 0.0001)
 
 CLI controls:
 - --overheat-gate on|off (default on)
@@ -430,7 +430,7 @@ CLI controls:
 - --overheat-funding-z-gte (default 2.5)
 
 Outputs:
-- derivatives_state can now be: ullish|bearish|neutral|bullish_crowded
+- derivatives_state can now be: bullish|bearish|neutral|bullish_crowded
 - overheat_gate_triggered (bool)
 - overheat_gate_reason (text)
 
@@ -439,17 +439,17 @@ Outputs:
 Integration:
 - Added long/short as a separate sub-component and blended into Part C score.
 - Final blend rule:
-  - inal_score = (1 - w_ls) * base_derivatives_score + w_ls * long_short_score
+  - final_score = (1 - w_ls) * base_derivatives_score + w_ls * long_short_score
 
 Defaults:
 - w_ls=0.15
 - ls_enabled=on
-- exchange: inance_futures
+- exchange: binance_futures
 
 Profile timeframe sets:
-- ltf: 5m,15m,30m with weights  .45,0.35,0.20
-- mtf: 30m,1h,4h with weights  .20,0.35,0.45
-- htf: 1h,4h,1d with weights  .20,0.35,0.45
+- ltf: 5m,15m,30m with weights 0.45,0.35,0.20
+- mtf: 30m,1h,4h with weights 0.20,0.35,0.45
+- htf: 1h,4h,1d with weights 0.20,0.35,0.45
 
 CLI controls:
 - --ls-enabled on|off
@@ -477,3 +477,34 @@ Decision:
 Scope:
 - Keep initial use focused on LS block.
 - Reuse this same naming for future features when applying multi-timeframe agreement logic.
+
+## Part D: Liquidation Standalone (Built)
+
+Script:
+- C:\Users\gssjr\OneDrive\Documents\New project\part_d_liquidation.py
+
+Inputs:
+- /v1/metrics/derivatives/liquidation_entry_price_heatmap_net
+- /v1/metrics/derivatives/futures_liquidated_total_volume_sum
+- Optional split:
+  - /v1/metrics/derivatives/futures_liquidated_volume_long_sum
+  - /v1/metrics/derivatives/futures_liquidated_volume_short_sum
+
+Output contract:
+- liq_level_bias: long_side_loaded | short_side_loaded | balanced
+- liq_event_state: flush_down | squeeze_up | calm | high_vol_chop
+- liq_composite_state: bullish_watch | bearish_watch | high_vol_chop | neutral_watch
+- liq_reason
+
+Timeframe contract:
+- heatmap_tf fixed to 1h
+- event_tf configurable by profile or --event-tf (10m|1h|24h)
+
+Coverage:
+- Supported symbols for heatmap family:
+  - BNB,BTC,DOGE,ETH,SOL,TON,XRP
+- Unsupported symbols return explicit error.
+
+Current runtime status:
+- Manual mode validated.
+- API mode requires GLASSNODE_API_KEY in env.
